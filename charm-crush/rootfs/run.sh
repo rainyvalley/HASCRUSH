@@ -6,7 +6,7 @@ export HA_TOKEN="$SUPERVISOR_TOKEN"
 export HA_URL="http://supervisor/core"
 
 PERSIST_DIR=/homeassistant/.crushdata
-mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config
+mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config /root/.local/share
 chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 
 # ── Optional env-file defaults ─────────────────────────────────────────
