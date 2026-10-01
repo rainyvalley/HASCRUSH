@@ -1,0 +1,56 @@
+name: Crush
+description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
+version: "1.0.0"
+slug: charm-crush
+url: https://github.com/rainyvalley/HASSCharm
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: true
+ingress: true
+ingress_port: 7681
+ingress_stream: true
+panel_icon: mdi:heart
+panel_title: Crush
+homeassistant_api: true
+auth_api: true
+hassio_api: true
+hassio_role: manager
+uart: true
+docker_api: true
+full_access: true
+map:
+  - homeassistant_config:rw
+  - ssl:ro
+  - share:rw
+  - media:rw
+  - addon_config:rw
+  - backup:ro
+options:
+  crush_config_url: "http://203.0.113.10:8887/crushrc.template"
+  ollama_key_url: "http://203.0.113.10:8887/ollama.key"
+  mem0_mcp_url: "http://203.0.113.10:8300/mcp"
+  mem0_mcp_token_url: "http://203.0.113.10:8887/mem0-mcp.token"
+  mem0_mcp_token: ""
+  ollama_api_key: ""
+  terminal_font_size: 14
+  terminal_theme: dark
+  working_directory: /homeassistant
+  session_persistence: true
+  auto_update_crush: true
+environment:
+  TERM: xterm-256color
+schema:
+  crush_config_url: str?
+  ollama_key_url: str?
+  mem0_mcp_url: str?
+  mem0_mcp_token_url: str?
+  mem0_mcp_token: str?
+  ollama_api_key: str?
+  terminal_font_size: int(10,24)
+  terminal_theme: list(dark|light)
+  working_directory: str
+  session_persistence: bool
+  auto_update_crush: bool

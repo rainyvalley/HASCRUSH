@@ -1,0 +1,198 @@
+#!/bin/bash
+# Crush add-on startup: config fetch + key resolution + persistence + ttyd.
+set -e
+
+export HA_TOKEN="$SUPERVISOR_TOKEN"
+export HA_URL="http://supervisor/core"
+
+PERSIST_DIR=/homeassistant/.crushdata
+mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config
+chmod 700 "$PERSIST_DIR" 2>/dev/null || true
+
+# ── Persistence symlinks ────────────────────────────────────────────────
+# Everything crush writes lives in /homeassistant/.crushdata/ so it survives
+# container restarts, rebuilds and reinstalls (and ships inside HA backups).
+rm -rf /root/.config/crush
+ln -sfn "$PERSIST_DIR/config/crush" /root/.config/crush
+rm -rf /root/.local/share/crush
+ln -sfn "$PERSIST_DIR/data" /root/.local/share/crush
+
+# ── CRUSH.md: standing instructions for the agent ──────────────────────
+cat > "$PERSIST_DIR/CRUSH.md" <<'EOF'
+# Crush - Home Assistant Add-on
+
+## Path Mapping
+
+In this add-on container, paths map differently than HA Core:
+- `/homeassistant` = HA config directory (equivalent to `/config` in HA Core)
+- `/config` does NOT exist - always use `/homeassistant`
+
+When users mention `/config/...`, translate to `/homeassistant/...`
+
+## Home Assistant Integration
+
+Use the `ha` CLI (token + URL already set in the environment):
+- `ha core logs 2>&1 | tail -100`        - recent logs
+- `ha core logs 2>&1 | grep -i keyword`  - filter logs
+- `ha core stats` / `ha host info`       - system status
+
+Automation and configuration files live in /homeassistant
+(automations.yaml, configuration.yaml, scripts.yaml, ...).
+
+## Available Paths
+
+| Path | Description | Access |
+|------|-------------|--------|
+| `/homeassistant` | HA configuration | read-write |
+| `/share` | Shared folder | read-write |
+| `/media` | Media files | read-write |
+| `/ssl` | SSL certificates | read-only |
+| `/backup` | Backups | read-only |
+
+Log levels: `debug` < `info` < `warning` < `error`. `_LOGGER.debug()` output
+is invisible unless debug logging is enabled in configuration.yaml.
+EOF
+
+# ── crushrc: central template, or a self-contained fallback ────────────
+crushrc="$PERSIST_DIR/config/crush/crushrc"
+CONFIG_URL=$(jq -r '.crush_config_url // ""' /data/options.json)
+if [ -n "$CONFIG_URL" ] \
+   && curl -fsSL --max-time 10 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
+   && head -c 1000 /tmp/crushrc.new | grep -qE 'provider add|crushrc|model add'; then
+  mkdir -p "$(dirname "$crushrc")"
+  mv -f /tmp/crushrc.new "$crushrc"   # same-dir move = atomic
+  echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
+else
+  if [ ! -f "$crushrc" ]; then
+    cat > "$crushrc" <<'RCEOF'
+# Built-in fallback crushrc (add-on). Set crush_config_url to manage centrally.
+
+# Key resolution: addon option/env -> persisted file
+OLLAMA_API_KEY="${OLLAMA_API_KEY:-$(jq -r '.ollama_api_key // ""' /data/options.json 2>/dev/null)}"
+: "${OLLAMA_API_KEY:-$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -d= -f2)}"
+export OLLAMA_API_KEY
+: "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
+
+provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
+provider add ollama-local --type ollama --base-url "http://203.0.113.10:11434/v1"
+
+# Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
+model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
+model large ollama-cloud/glm-5.3-flash --reasoning-effort high
+model small ollama-cloud/glm-5.3-flash --reasoning-effort high
+
+# Deep mode (registered, not default - pick it via / in the TUI):
+model add ollama-cloud/glm-5.3 --name "GLM 5.3" --context-window 1000000 --default-max-tokens 128000 --can-reason true --reasoning-effort max --price-input 1.4 --price-output 4.4
+
+# Local vision (LAN Ollama) + cloud vision fallback
+model add ollama-local/qwen3-vl:4b-instruct --context-window 8192 --supports-images true --name "Qwen3 VL 4B (local vision)"
+model add ollama-cloud/gemma4:31b --context-window 128000 --supports-images true --name "Gemma 4 31B (cloud vision)"
+
+option notifications auto
+
+# mem0-mcp (shared memory layer) - token from the addon option or the server
+MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json 2>/dev/null)}"
+mcp add mem0 --type http --url "http://203.0.113.10:8300/mcp" --header Authorization "Bearer $MEM0_MCP_TOKEN"
+RCEOF
+    echo "[addon] built-in fallback crushrc written (set crush_config_url to manage centrally)"
+  else
+    echo "[addon] keeping existing crushrc (central template unreachable)"
+  fi
+fi
+
+# ── Ollama API key: option -> central key URL -> existing file ─────────
+keyfile="$PERSIST_DIR/config/crush/ollama.env"
+OPT_KEY=$(jq -r '.ollama_api_key // ""' /data/options.json)
+KEY_URL=$(jq -r '.ollama_key_url // ""' /data/options.json)
+touch "$keyfile"; chmod 600 "$keyfile"
+if [ -n "$OPT_KEY" ]; then
+  # addon option wins; replace any existing line rather than appending dups
+  sed -i 's/^OLLAMA_API_KEY=.*/OLLAMA_API_KEY='"$OPT_KEY"'/' "$keyfile" 2>/dev/null \
+    || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
+  grep -q '^OLLAMA_API_KEY=' "$keyfile" || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
+  echo "[addon][INFO] ollama API key set from the add-on option"
+elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 "$KEY_URL" -o /tmp/key.new 2>/dev/null \
+     && grep -q '^OLLAMA_API_KEY=' /tmp/key.new; then
+  CENTRAL=$(grep -m1 '^OLLAMA_API_KEY=' /tmp/key.new)
+  LOCAL=$(grep -m1 -s '^OLLAMA_API_KEY=' "$keyfile" || true)
+  if [ "$CENTRAL" != "$LOCAL" ]; then
+    { grep -v '^OLLAMA_API_KEY=' "$keyfile" 2>/dev/null || true; echo "$CENTRAL"; } > "$keyfile.tmp"
+    mv "$keyfile.tmp" "$keyfile"
+    echo "[addon][INFO] ollama API key refreshed from $KEY_URL"
+  fi
+else
+  [ -s "$keyfile" ] && echo "[addon][INFO] using existing persisted ollama key" \
+    || echo "[addon][WARN] no ollama API key found (option, key URL, or persisted file)"
+fi
+# mem0 token: option -> token URL (no key file needed; it is passed via the crushrc below)
+OPT_MTOK=$(jq -r '.mem0_mcp_token // ""' /data/options.json)
+MTOK_URL=$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)
+MEM0_MCP_TOKEN="$OPT_MTOK"
+if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
+  MEM0_MCP_TOKEN=$(curl -fsSL --max-time 10 "$MTOK_URL" 2>/dev/null | tr -d '[:space:]')
+fi
+export MEM0_MCP_TOKEN
+
+# mem0 MCP url / searxng (same memory layer as Open WebUI, served from the same host)
+MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
+if [ -n "$MEM0_URL" ]; then
+  # replace or append the mem0 mcp line in the fetched crushrc
+  if grep -q "mcp add mem0" "$crushrc" 2>/dev/null; then
+    sed -i "s#mcp add mem0 .*#mcp add mem0 --type http --url \"$MEM0_URL\" --header Authorization \"Bearer \$MEM0_MCP_TOKEN\"#" "$crushrc"
+  else
+    printf '\nmcp add mem0 --type http --url "%s" --header Authorization "Bearer $MEM0_MCP_TOKEN"\n' "$MEM0_URL" >> "$crushrc"
+  fi
+fi
+
+# NOTE for crushrc users: the crushrc is BASH - it resolves OLLAMA_API_KEY and
+# MEM0_MCP_TOKEN from the environment (exported above), so the fetched central
+# template keeps working without the addon knowing its internals.
+
+# ── crush sanity + version banner ──────────────────────────────────────
+BUILT_VERSION=$(cat /etc/crush-version 2>/dev/null || echo unknown)
+if crush --version < /dev/null >/dev/null 2>&1; then
+  echo "[addon] crush binary OK ($BUILT_VERSION built in)"
+else
+  echo "[addon][ERROR] crush binary not responding - terminal still starts for debugging"
+fi
+
+AUTO_UPDATE=$(jq -r '.auto_update_crush // false' /data/options.json)
+if [ "$AUTO_UPDATE" = "true" ]; then
+  NEW_VER=$(curl -fsSL --max-time 15 https://api.github.com/repos/charmbracelet/crush/releases/latest 2>/dev/null | jq -r .tag_name | tr -d v)
+  if [ -n "$NEW_VER" ] && [ "$NEW_VER" != "$BUILT_VERSION" ]; then
+    ARCH=$(uname -m); case "$ARCH" in x86_64) A=x86_64;; aarch64) A=aarch64;; *) A=?;; esac
+    curl -fsSL --max-time 30 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/crush_${NEW_VER}_${A}.tar.gz" -o /tmp/crush.upd 2>/dev/null \
+    && tar -xzf /tmp/crush.upd -C /usr/local/bin crush \
+    && chmod +x /usr/local/bin/crush && rm -f /tmp/crush.upd \
+    && (crush --version < /dev/null >/dev/null 2>&1 || { echo "[addon][WARN] updated crush fails; rolling back"; \
+         curl -fsSL --max-time 30 "https://github.com/charmbracelet/crush/releases/download/v${BUILT_VERSION}/crush_${BUILT_VERSION#v}_${A}.tar.gz" -o /tmp/crush.rb \
+         && tar -xzf /tmp/crush.rb -C /usr/local/bin crush; rm -f /tmp/crush.rb; }) \
+    && echo "[addon] crush updated to $NEW_VER"
+  else
+    echo "[addon] crush $BUILT_VERSION is current"
+  fi
+fi
+
+# ── Web terminal ────────────────────────────────────────────────────────
+FONT_SIZE=$(jq -r '.terminal_font_size // 14' /data/options.json)
+THEME=$(jq -r '.terminal_theme // "dark"' /data/options.json)
+SESSION_PERSIST=$(jq -r 'if .session_persistence == null then true else .session_persistence end' /data/options.json)
+WORKDIR=$(jq -r '.working_directory // "/homeassistant"' /data/options.json)
+if [ "$THEME" = "dark" ]; then
+  COLORS='background=#1e1e2e,foreground=#cdd6f4,cursor=#f5e0dc'
+else
+  COLORS='background=#eff1f5,foreground=#4c4f69,cursor=#dc8a78'
+fi
+if [ "$SESSION_PERSIST" = "true" ]; then
+  SHELL_CMD='tmux new-session -A -s crush'
+else
+  SHELL_CMD='bash --login'
+fi
+cd "$WORKDIR" 2>/dev/null || cd /homeassistant
+
+exec ttyd --port 7681 --writable --ping-interval 30 --max-clients 5 \
+    -t fontSize=$FONT_SIZE \
+    -t fontFamily=Monaco,Consolas,monospace \
+    -t scrollback=20000 \
+    -t "theme=$COLORS" \
+    $SHELL_CMD

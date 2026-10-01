@@ -1,0 +1,57 @@
+configuration:
+  crush_config_url:
+    name: Central crushrc Template URL
+    description: >-
+      Fetch the Crush config (rc) from a central HTTP template each startup.
+      Points at your config server's crushrc.template; leave empty to use the
+      built-in fallback config. The rc is real Bash - it resolves API keys from
+      the add-on's environment.
+  ollama_key_url:
+    name: Ollama API Key URL
+    description: >-
+      Fetch the Ollama Cloud API key from your config server (plain OLLAMA_API_KEY=... file).
+      Overrides a stale persisted key when the central copy changes. Ignored if
+      the Ollama API Key option below is set directly.
+  mem0_mcp_url:
+    name: mem0 MCP Server URL
+    description: >-
+      URL of the mem0-mcp server (shared memory layer also used by Open WebUI).
+      Empty disables the mem0 MCP server in crush.
+  mem0_mcp_token_url:
+    name: mem0 MCP Token URL
+    description: >-
+      URL serving the mem0 MCP bearer token (plain text). Ignored if the
+      mem0 MCP Token option below is set directly.
+  mem0_mcp_token:
+    name: mem0 MCP Token
+    description: >-
+      Bearer token for the mem0 MCP server. Takes priority over the token URL.
+  ollama_api_key:
+    name: Ollama API Key
+    description: >-
+      Ollama Cloud API key (ollama.com). Takes priority over the key URL.
+      Leave empty to use the key URL or a previously persisted key.
+  terminal_font_size:
+    name: Terminal Font Size
+    description: >-
+      Font size for the web terminal in pixels (10-24).
+  terminal_theme:
+    name: Terminal Theme
+    description: >-
+      Color theme for the web terminal. Dark or light.
+  working_directory:
+    name: Working Directory
+    description: >-
+      Where crush starts. Use /homeassistant for direct access to HA config files.
+  session_persistence:
+    name: Session Persistence
+    description: >-
+      tmux session survives browser refreshes and disconnects. Recommended.
+  auto_update_crush:
+    name: Auto-update Crush
+    description: >-
+      Check for a newer Crush release on each add-on start and install it
+      (with rollback if the new binary fails its smoke test).
+
+network:
+  7681/tcp: Web Terminal (ttyd)
