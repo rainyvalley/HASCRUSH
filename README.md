@@ -15,7 +15,7 @@ Charm's terminal AI tools running inside Home Assistant, pointed at your own mod
 2. Refresh the store; install the add-on.
 3. Configure options in the add-on page, start it, open from the sidebar.
 
-Full option and usage documentation in each add-on folder's README.
+**→ Full documentation: [`charm-crush/README.md`](charm-crush/README.md)** — model choice + refresh workflow, memory wiring examples, HA API usage, DIY central-config recipe, troubleshooting.
 
 ## License
 
