@@ -57,8 +57,7 @@ RUN case "${BUILD_ARCH}" in \
 # Install Crush. Resolve the current version from GitHub releases and verify the
 # binary runs a smoke test before trusting it; if the newest release fails on
 # this base, fall back to a known-good pinned release rather than failing the
-# whole build (same idea as robsonfelix's install-claude.sh version search,
-# simplified because crush publishes two binaries, not an npm stream).
+# whole build.
 # Asset naming (verified against v0.97.1): crush_<ver>_Linux_<arch>.tar.gz with
 # the binary at crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine
 # packages (arch names x86_64/aarch64) — an alternative install path.
