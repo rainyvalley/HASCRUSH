@@ -18,7 +18,8 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 - **Your models**: any model registered in your Ollama (local + Ollama Cloud). Defaults are GLM-family: `GLM 5.3 Flash` for daily chat (thinking on, effort high) and `GLM 5.3` for deep mode (effort max); swap models in the TUI's `/` → model picker anytime
 - **Persistent sessions**: tmux survives refresh/disconnect; crushrc, API keys, and session data live in `/homeassistant/.crushdata/` (which HA backs up)
 - **Central config (optional)**: each start can fetch your crushrc from any HTTP URL — that's how a whole fleet of machines (HA devices, workstations) shares one config
-- **Memory (optional)**: point it at any MCP memory server — e.g. the shared mem0 layer used by Open WebUI in [mem0-mcp-wrapper](https://github.com/rainyvalley/mem0-mcp-wrapper) — so HA-side Crush remembers the same facts your other tools know
+- **Memory (optional)**: point it at any MCP memory server — e.g. the shared mem0 layer used by Open WebUI, or your own — so HA-side Crush remembers the same facts your other tools know
+- **Model picker defaults** (shown in the TUI and in this repo's fallback config): **GLM 5.3 Flash** (large + small slots, thinking on at effort high) and **GLM 5.3** for deep work (effort max). Choose anything else in the TUI `/` → model picker; add your own models via the central template or the local crushrc (refresh = add-on restart).
 - `ha` CLI preinstalled and pre-authenticated against the Supervisor API; `HA_TOKEN`/`HA_URL` exported to the environment only
 
 ## Requirements
