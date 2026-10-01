@@ -9,6 +9,24 @@ PERSIST_DIR=/homeassistant/.crushdata
 mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config
 chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 
+# ── Optional env-file defaults ─────────────────────────────────────────
+# /homeassistant/.crushdata/env (KEY=VALUE lines) sets DEFAULTS via environment
+# variables — the script's own `VAR=${VAR:-...}` chains honor it everywhere.
+# Precedence: real environment (docker run -e / HA env) > this file > add-on
+# option > central URL > persisted file. Example lines:
+#   OLLAMA_API_KEY=sk-...
+#   MEM0_MCP_TOKEN=...
+#   CRUSH_CONFIG_URL=http://my-server/crushrc.template
+# Missing file = no defaults set; everything still works from options/schema.
+ENV_FILE="$PERSIST_DIR/env"
+if [ -r "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+  echo "[addon] env defaults sourced from $ENV_FILE"
+fi
+
 # ── Persistence symlinks ────────────────────────────────────────────────
 # Everything crush writes lives in /homeassistant/.crushdata/ so it survives
 # container restarts, rebuilds and reinstalls (and ships inside HA backups).
@@ -55,7 +73,7 @@ EOF
 
 # ── crushrc: central template, or a self-contained fallback ────────────
 crushrc="$PERSIST_DIR/config/crush/crushrc"
-CONFIG_URL=$(jq -r '.crush_config_url // ""' /data/options.json)
+CONFIG_URL="${CRUSH_CONFIG_URL:-$(jq -r '.crush_config_url // ""' /data/options.json)}"
 if [ -n "$CONFIG_URL" ] \
    && curl -fsSL --max-time 10 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
    && head -c 1000 /tmp/crushrc.new | grep -qE 'provider add|crushrc|model add'; then
@@ -102,8 +120,8 @@ fi
 
 # ── Ollama API key: option -> central key URL -> existing file ─────────
 keyfile="$PERSIST_DIR/config/crush/ollama.env"
-OPT_KEY=$(jq -r '.ollama_api_key // ""' /data/options.json)
-KEY_URL=$(jq -r '.ollama_key_url // ""' /data/options.json)
+OPT_KEY="${OLLAMA_API_KEY:-$(jq -r '.ollama_api_key // ""' /data/options.json)}"
+KEY_URL="${OLLAMA_KEY_URL:-$(jq -r '.ollama_key_url // ""' /data/options.json)}"
 touch "$keyfile"; chmod 600 "$keyfile"
 if [ -n "$OPT_KEY" ]; then
   # addon option wins; replace any existing line rather than appending dups
@@ -125,9 +143,8 @@ else
     || echo "[addon][WARN] no ollama API key found (option, key URL, or persisted file)"
 fi
 # mem0 token: option -> token URL (no key file needed; it is passed via the crushrc below)
-OPT_MTOK=$(jq -r '.mem0_mcp_token // ""' /data/options.json)
-MTOK_URL=$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)
-MEM0_MCP_TOKEN="$OPT_MTOK"
+MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json)}"
+MTOK_URL="${MEM0_MCP_TOKEN_URL:-$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)}"
 if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
   MEM0_MCP_TOKEN=$(curl -fsSL --max-time 10 "$MTOK_URL" 2>/dev/null | tr -d '[:space:]')
 fi

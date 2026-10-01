@@ -126,6 +126,46 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 
 Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` only resolves inside add-ons.
 
+## Environment variables
+
+Every option can be set as an environment variable instead of (or in priority above) the add-on
+Options tab. **Precedence: real environment > `/homeassistant/.crushdata/env` file > Options tab
+value > central URL > persisted file.**
+
+| Env var | Matches option | Notes |
+|---|---|---|
+| `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
+| `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
+| `MEM0_MCP_TOKEN` | mem0 MCP Token | Bearer for the memory MCP server |
+| `MEM0_MCP_TOKEN_URL` | mem0 MCP Token URL | URL fetching the token |
+| `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
+| `TERM` | — | xterm-256color (set by the add-on) |
+
+**Three ways to set them**
+
+1. **The env file (recommended inside HA)** — create
+   `/homeassistant/.crushdata/env` in the add-on's web terminal (or the file editor), one
+   `KEY=VALUE` per line:
+
+   ```bash
+   OLLAMA_API_KEY=sk-...
+   MEM0_MCP_TOKEN=...
+   CRUSH_CONFIG_URL=http://my-server:8887/crushrc.template
+   ```
+
+   It is sourced (shell-syntax, `set -a`) on every add-on start, survives restarts/rebuilds, ships
+   in HA backups, and **wins over the Options tab** — handy for secrets you don't want shown in the
+   options UI. `chmod 600` it.
+2. **The Options tab** — plain values; each one also lands in `/data/options.json`, and secrets
+   there are replaced into the env chain unless a higher-precedence value exists.
+3. **Real environment (supervised/docker users only)** — HAOS users cannot set container env
+   directly; but on a supervised install running the add-on image yourself:
+   `docker run -e OLLAMA_API_KEY=... ...`. Real env beats the file and the tab.
+
+**API-key-related envs behave the same way** — the crushrc is Bash, so `OLLAMA_API_KEY`,
+`MEM0_MCP_TOKEN`, and any custom value live in the same namespace; a fetched central template
+resolves its secrets from these envs (never inline), keeping the template fleet-safe.
+
 ## File locations (inside the add-on)
 
 | Path | Purpose |
@@ -134,6 +174,7 @@ Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` 
 | `/homeassistant/.crushdata/config/crush/ollama.env` | persisted API keys (chmod 600; in HA backups) |
 | `/homeassistant/.crushdata/CRUSH.md` | standing instructions (path mapping, `ha` usage, log levels) |
 | `/homeassistant/.crushdata/data/` | crush session data |
+| `/homeassistant/.crushdata/env` | optional env-file defaults (KEY=VALUE; wins over the Options tab) |
 | `/homeassistant/.crushdata/tmux.conf` | user tmux overrides (sourced last) |
 
 ## Security
