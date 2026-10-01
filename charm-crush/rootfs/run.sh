@@ -92,7 +92,7 @@ export OLLAMA_API_KEY
 : "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
 
 provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
-provider add ollama-local --type ollama --base-url "${OLLAMA_LOCAL_URL:-http://<your-lan-ollama>:11434/v1}"
+provider add ollama-local --type ollama --base-url "${LOCAL_OLLAMA_URL:-http://203.0.113.10:11434/v1}"
 
 # Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
@@ -115,6 +115,23 @@ RCEOF
     echo "[addon] built-in fallback crushrc written (set crush_config_url to manage centrally)"
   else
     echo "[addon] keeping existing crushrc (central template unreachable)"
+  fi
+fi
+
+# ── LLM provider: ollama (default) or a 3rd-party OpenAI-compatible API ─
+PROVIDER=$(jq -r '.provider // "ollama"' /data/options.json)
+if [ "$PROVIDER" = "third_party" ]; then
+  TP_URL="${THIRD_PARTY_BASE_URL:-$(jq -r '.third_party_base_url // ""' /data/options.json)}"
+  TP_KEY="${THIRD_PARTY_API_KEY:-$(jq -r '.third_party_api_key // ""' /data/options.json)}"
+  if [ -z "$TP_URL" ] || [ -z "$TP_KEY" ]; then
+    echo "[addon][ERROR] provider=third_party but third_party_base_url / third_party_api_key are missing - falling back to ollama"
+  else
+    TPID=openai-compat-3p
+    sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
+    sed -i "s#--api-key \"\\$OLLAMA_API_KEY\"#--api-key \"$TP_KEY\"#" "$crushrc"
+    sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
+    export OLLAMA_API_KEY="$TP_KEY"
+    echo "[addon] provider=third_party: models remapped to $TPID ($TP_URL)"
   fi
 fi
 

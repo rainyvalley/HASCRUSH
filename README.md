@@ -35,6 +35,24 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 3. Configure options (see below) — at minimum an **Ollama API Key** (or a key URL), unless your config template resolves the key itself.
 4. Start the add-on; open it from the sidebar (panel title "Crush").
 
+## LLM provider: Ollama (default) or any 3rd-party OpenAI-compatible API
+
+The **Provider** picklist in the Options tab chooses where models come from:
+
+- **`ollama`** (default) — models live in your Ollama: `ollama.com/cloud` (key from the API Key option / key URL) + `ollama-local` on your LAN (`local_ollama_url`).
+- **`third_party`** — check it and two more fields appear: **Base URL** (e.g. `https://openrouter.ai/api/v1`, `https://api.openai.com/v1`, or any OpenAI-compatible endpoint) and **API Key**. On start, the config's model ids (`ollama-cloud/...`) are remapped to your provider automatically — same models, same slots, different backend.
+
+Examples:
+
+| You want | Options to set |
+|---|---|
+| Ollama Cloud + LAN Ollama (default) | `provider=ollama`, `ollama_api_key` (or key URL), optional `local_ollama_url` |
+| OpenRouter models | `provider=third_party`, `third_party_base_url=https://openrouter.ai/api/v1`, `third_party_api_key=sk-or-...` |
+| OpenAI | `provider=third_party`, `third_party_base_url=https://api.openai.com/v1`, `third_party_api_key=sk-...` |
+| Any other OpenAI-compatible | `provider=third_party`, its URL + key |
+
+Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_URL`, `THIRD_PARTY_API_KEY`, `LOCAL_OLLAMA_URL`.
+
 ## Models: choose, add, refresh
 
 **Choosing at runtime** — in the TUI:
@@ -125,6 +143,9 @@ value > central URL > persisted file.**
 
 | Env var | Matches option | Notes |
 |---|---|---|
+| `THIRD_PARTY_BASE_URL` | Third-Party Base URL | Required with Provider = third_party (OpenAI-compatible endpoint) |
+| `THIRD_PARTY_API_KEY` | Third-Party API Key | Required with Provider = third_party |
+| `LOCAL_OLLAMA_URL` | LAN Ollama URL | Local Ollama base for `ollama-local` models |
 | `CRUSH_LARGE_MODEL` | Default daily model | Model registration id (`provider/model`) — e.g. `ollama-cloud/glm-5.3-flash`. Set as env in `.crushdata/env` or pick in the Options dropdown |
 | `CRUSH_SMALL_MODEL` | Helper/small model | Same form; used by crush for summaries/titles |
 | `CRUSH_DEEP_MODEL` | Deep reasoning model | Registered and tagged as the reasoning pick; switched to via TUI `/` picker |

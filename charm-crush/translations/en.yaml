@@ -1,4 +1,24 @@
 configuration:
+  provider:
+    name: LLM Provider
+    description: >-
+      ollama (default): models served by ollama.com and/or your LAN Ollama.
+      third_party: any OpenAI-compatible API - then set its Base URL and API
+      Key below; the default GLM models are remapped onto your provider.
+  third_party_base_url:
+    name: Third-Party Base URL
+    description: >-
+      Required when Provider = third_party. The OpenAI-compatible API base,
+      e.g. https://api.openai.com/v1 or https://openrouter.ai/api/v1.
+  third_party_api_key:
+    name: Third-Party API Key
+    description: >-
+      Required when Provider = third_party. The API key for that endpoint.
+  local_ollama_url:
+    name: LAN Ollama URL
+    description: >-
+      Base URL of your local Ollama (OpenAI-compatible /v1). Used for the
+      local/vision models when provider = ollama.
   crush_large_model:
     name: Default (Daily) Model
     description: >-

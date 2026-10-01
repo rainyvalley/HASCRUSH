@@ -29,6 +29,10 @@ map:
   - addon_config:rw
   - backup:ro
 options:
+  provider: ollama
+  third_party_base_url: ""
+  third_party_api_key: ""
+  local_ollama_url: "http://203.0.113.10:11434/v1"
   crush_config_url: ""   # optional: HTTP URL fetching your crushrc each start
   crush_large_model: "ollama-cloud/glm-5.3-flash"
   crush_small_model: "ollama-cloud/glm-5.3-flash"
@@ -47,6 +51,10 @@ options:
 environment:
   TERM: xterm-256color
 schema:
+  provider: list(ollama|third_party)
+  third_party_base_url: str?
+  third_party_api_key: str?
+  local_ollama_url: str?
   crush_config_url: str?
   crush_large_model: str?
   crush_small_model: str?
