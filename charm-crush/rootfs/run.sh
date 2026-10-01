@@ -92,7 +92,7 @@ export OLLAMA_API_KEY
 : "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
 
 provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
-provider add ollama-local --type ollama --base-url "http://203.0.113.10:11434/v1"
+provider add ollama-local --type ollama --base-url "${OLLAMA_LOCAL_URL:-http://<your-lan-ollama>:11434/v1}"
 
 # Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
@@ -110,7 +110,7 @@ option notifications auto
 
 # mem0-mcp (shared memory layer) - token from the addon option or the server
 MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json 2>/dev/null)}"
-mcp add mem0 --type http --url "http://203.0.113.10:8300/mcp" --header Authorization "Bearer $MEM0_MCP_TOKEN"
+mcp add mem0 --type http --url "${MEM0_MCP_URL}" --header Authorization "Bearer $MEM0_MCP_TOKEN"
 RCEOF
     echo "[addon] built-in fallback crushrc written (set crush_config_url to manage centrally)"
   else

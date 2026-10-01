@@ -29,14 +29,14 @@ map:
   - addon_config:rw
   - backup:ro
 options:
-  crush_config_url: "http://203.0.113.10:8887/crushrc.template"
+  crush_config_url: ""   # optional: HTTP URL fetching your crushrc each start
   crush_large_model: "ollama-cloud/glm-5.3-flash"
   crush_small_model: "ollama-cloud/glm-5.3-flash"
   crush_deep_model: "ollama-cloud/glm-5.3"
   crush_reasoning_effort: "high"
-  ollama_key_url: "http://203.0.113.10:8887/ollama.key"
-  mem0_mcp_url: "http://203.0.113.10:8300/mcp"
-  mem0_mcp_token_url: "http://203.0.113.10:8887/mem0-mcp.token"
+  ollama_key_url: ""     # optional: HTTP URL fetching OLLAMA_API_KEY=...
+  mem0_mcp_url: ""        # optional: e.g. http://<host>:8300/mcp
+  mem0_mcp_token_url: ""  # optional: HTTP URL fetching the mem0 MCP token
   mem0_mcp_token: ""
   ollama_api_key: ""
   terminal_font_size: 14

@@ -88,7 +88,7 @@ memory_history(memory_id="<id from search>")
 
 The `crush_config_url` is **plain HTTP** — any static file server works. It's a single text file (the crushrc) fetched at add-on start. No auth, no API — host it however:
 
-- **The author's personal server** — the default URLs point at one (`http://203.0.113.10:8887/...` on the author's LAN). Your install should replace those URLs with your own (or leave them and accept the defaults won't resolve outside that network — the built-in fallback config covers it).
+- **Another instance of Crush** — the natural fit: any machine already running Crush with a working crushrc can share that same file over HTTP; point `crush_config_url` at the copy and the HA install boots with the same config as the rest of the fleet.
 - **DIY with nginx in a container** (2 minutes):
 
   ```bash
