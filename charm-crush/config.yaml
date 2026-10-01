@@ -30,6 +30,10 @@ map:
   - backup:ro
 options:
   crush_config_url: "http://203.0.113.10:8887/crushrc.template"
+  crush_large_model: "ollama-cloud/glm-5.3-flash"
+  crush_small_model: "ollama-cloud/glm-5.3-flash"
+  crush_deep_model: "ollama-cloud/glm-5.3"
+  crush_reasoning_effort: "high"
   ollama_key_url: "http://203.0.113.10:8887/ollama.key"
   mem0_mcp_url: "http://203.0.113.10:8300/mcp"
   mem0_mcp_token_url: "http://203.0.113.10:8887/mem0-mcp.token"
@@ -44,6 +48,10 @@ environment:
   TERM: xterm-256color
 schema:
   crush_config_url: str?
+  crush_large_model: str?
+  crush_small_model: str?
+  crush_deep_model: str?
+  crush_reasoning_effort: list(low|high|max)?
   ollama_key_url: str?
   mem0_mcp_url: str?
   mem0_mcp_token_url: str?

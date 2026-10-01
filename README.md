@@ -143,6 +143,10 @@ value > central URL > persisted file.**
 
 | Env var | Matches option | Notes |
 |---|---|---|
+| `CRUSH_LARGE_MODEL` | Default daily model | Model registration id (`provider/model`) — e.g. `ollama-cloud/glm-5.3-flash`. Set as env in `.crushdata/env` or pick in the Options dropdown |
+| `CRUSH_SMALL_MODEL` | Helper/small model | Same form; used by crush for summaries/titles |
+| `CRUSH_DEEP_MODEL` | Deep reasoning model | Registered and tagged as the reasoning pick; switched to via TUI `/` picker |
+| `CRUSH_REASONING_EFFORT` | Reasoning effort | `low`/`high`/`max` applied to the daily model (`high` default) |
 | `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
 | `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
 | `MEM0_MCP_TOKEN` | mem0 MCP Token | Bearer for the memory MCP server |
@@ -152,7 +156,7 @@ value > central URL > persisted file.**
 
 **Three ways to set them**
 
-1. **The env file (recommended inside HA)** — create
+1. **The env file** — create
    `/homeassistant/.crushdata/env` in the add-on's web terminal (or the file editor), one
    `KEY=VALUE` per line:
 

@@ -1,4 +1,24 @@
 configuration:
+  crush_large_model:
+    name: Default (Daily) Model
+    description: >-
+      Model registration id used as the daily default (provider/model form).
+      Defaults to ollama-cloud/glm-5.3-flash. The picker in the TUI always
+      shows every model in the config; restart the add-on to refresh choices.
+  crush_small_model:
+    name: Helper (Small) Model
+    description: >-
+      Model used for session summaries/titles. Defaults to ollama-cloud/glm-5.3-flash.
+  crush_deep_model:
+    name: Deep Reasoning Model
+    description: >-
+      Registered as a reasoning model for heavy tasks; switch to it via the
+      TUI model picker. Defaults to ollama-cloud/glm-5.3.
+  crush_reasoning_effort:
+    name: Reasoning Effort (Daily Model)
+    description: >-
+      Effort for the daily model's thinking: low (off), high (model-decided
+      depth), max (forced long). Default high.
   crush_config_url:
     name: Central crushrc Template URL
     description: >-
