@@ -88,27 +88,9 @@ memory_history(memory_id="<id from search>")
 
 The `crush_config_url` is **plain HTTP** — any static file server works. It's a single text file (the crushrc) fetched at add-on start. No auth, no API — host it however:
 
-- **Another instance of Crush** — the natural fit: any machine already running Crush with a working crushrc can share that same file over HTTP; point `crush_config_url` at the copy and the HA install boots with the same config as the rest of the fleet.
-- **DIY with nginx in a container** (2 minutes):
+- **Another instance of Crush** — the natural fit: any machine already running Crush with a working crushrc can share that same file over HTTP; point `crush_config_url` at the copy and the HA install boots with the same config as the rest of the fleet. (Caddy, `python -m http.server`, a NAS share over HTTP, or GitHub Pages all work equally well.)
 
-  ```bash
-  mkdir -p /srv/crush-shared
-  cat > /srv/crush-shared/crushrc <<'EOF'
-  provider add ollama-cloud --type openai-compat \
-    --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
-  model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 \
-    --default-max-tokens 131072 --can-reason true --reasoning-effort high
-  model large ollama-cloud/glm-5.3-flash --reasoning-effort high
-  model small ollama-cloud/glm-5.3-flash --reasoning-effort high
-  EOF
-  docker run -d --name crush-config -p 8887:80 \
-    -v /srv/crush-shared:/usr/share/nginx/html:ro nginx:alpine
-  # in the add-on: crush_config_url = http://<that-host>:8887/crushrc
-  ```
-
-  or any existing box: python -m http.server, Caddy, a NAS share served over HTTP, GitHub Pages/any URL reachable from HA.
-
-- **How keys fit central configs**: the crushrc is real Bash; resolve secrets from the ENV (the add-on exports `OLLAMA_API_KEY` from its options before running crushrc), NOT inline in the template — that keeps one shared template safe for a fleet while keys stay per-machine. The add-on also persists resolved keys to `~/.config/crush/ollama.env` (chmod 600), which survives restarts and stays out of the template file.
+**How keys fit central configs**: the crushrc is real Bash; resolve secrets from the ENV (the add-on exports `OLLAMA_API_KEY` from its options before running crushrc), NOT inline in the template — that keeps one shared template safe for a fleet while keys stay per-machine. The add-on also persists resolved keys to `~/.config/crush/ollama.env` (chmod 600), which survives restarts and stays out of the template file.
 
 ## API usage (the `ha` CLI + HA's REST)
 
