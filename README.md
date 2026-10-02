@@ -207,7 +207,8 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 ## Security
 
 - **Better security rating**: the add-on requests only Supervisor-manager + Home Assistant APIs and
-  mapped folders — **no `full_access`, no Docker API** (HA shows rating ~3 instead of 1). If a task
+  mapped folders — **no `full_access`, no Docker API, no custom AppArmor profile** (HA applies its own hardened
+  default profile — the same one the official community add-ons run under). If a task
   ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
   decision; raises the rating back to 1 while enabled).
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
