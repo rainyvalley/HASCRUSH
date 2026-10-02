@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
-version: "1.0.9"
+version: "1.0.10"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
@@ -12,7 +12,7 @@ init: false   # s6-overlay must be pid 1 (init:true re-parents it -> "can only r
 ingress: true
 ingress_port: 7681
 ingress_stream: true
-panel_icon: mdi:alpha-c   # the C of the crush mark in the sidebar
+panel_icon: mdi:alpha-c-box   # bold boxed C (bigger-reading sidebar glyph)
 panel_title: HASSCrush
 homeassistant_api: true
 auth_api: true
