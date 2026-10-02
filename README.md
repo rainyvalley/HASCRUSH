@@ -206,9 +206,13 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 
 ## Security
 
-- The add-on runs as root with `full_access` (file/config management + Supervisor/Docker APIs) because Crush is a full terminal agent.
-- The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or into configs.
-- API keys persist in the HA config dir — meaning they're included in HA backups. Protect HA backups accordingly, and rotate keys if a backup leaves your control.
+- **Better security rating**: the add-on requests only Supervisor-manager + Home Assistant APIs and
+  mapped folders — **no `full_access`, no Docker API** (HA shows rating ~3 instead of 1). If a task
+  ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
+  decision; raises the rating back to 1 while enabled).
+- The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
+- API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
+  and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
 
 ## Troubleshooting
