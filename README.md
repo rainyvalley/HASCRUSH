@@ -1,5 +1,7 @@
 # HASSCharm — Home Assistant add-ons for Charm tools
 
+![Crush](charm-crush/logo.png)
+
 Charm's terminal AI tools running inside Home Assistant, pointed at your own models and infrastructure.
 
 **Add-on in this repo: [`charm-crush/`](charm-crush/)** — everything below documents it. Install via **Settings → Add-ons → Add-on Store → ⋮ → Repositories** → add `https://github.com/rainyvalley/HASSCharm`.
@@ -8,19 +10,19 @@ Charm's terminal AI tools running inside Home Assistant, pointed at your own mod
 
 # Crush for Home Assistant
 
-Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first AI coding agent — inside Home Assistant, pointed at **your own Ollama models** (local LAN Ollama + Ollama Cloud), with an optional shared long-term memory layer you can plug in or leave out.
+Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first AI coding agent — inside Home Assistant, pointed at **your own Ollama models**, with optional shared memory.
 
 > The ttyd-over-ingress + persistent-tmux add-on shape was inspired by [robsonfelix's claudecode add-on](https://github.com/robsonfelix/robsonfelix-hass-addons). This add-on runs Crush with your Ollama models instead.
 
 ## Features
 
 - **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
-- **Your models**: any model registered in your Ollama (local + Ollama Cloud). Defaults are GLM-family: `GLM 5.3 Flash` for daily chat (thinking on, effort high) and `GLM 5.3` for deep mode (effort max); swap models in the TUI's `/` → model picker anytime
-- **Persistent sessions**: tmux survives refresh/disconnect; crushrc, API keys, and session data live in `/homeassistant/.crushdata/` (which HA backs up)
-- **Central config (optional)**: each start can fetch your crushrc from any HTTP URL — that's how a whole fleet of machines (HA devices, workstations) shares one config
-- **Memory (optional)**: point it at any MCP memory server — e.g. the shared mem0 layer used by Open WebUI, or your own — so HA-side Crush remembers the same facts your other tools know
-- **Model picker defaults** (shown in the TUI and in this repo's fallback config): **GLM 5.3 Flash** (large + small slots, thinking on at effort high) and **GLM 5.3** for deep work (effort max). Choose anything else in the TUI `/` → model picker; add your own models via the central template or the local crushrc (refresh = add-on restart).
-- `ha` CLI preinstalled and pre-authenticated against the Supervisor API; `HA_TOKEN`/`HA_URL` exported to the environment only
+- **Crush in the HA sidebar** — web terminal behind HA's own authentication
+- **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); pick others in the TUI's `/` → model picker; refresh list = add-on restart
+- **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
+- **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
+- **Memory (optional)** — point at any MCP memory server (e.g. the mem0 layer shared with Open WebUI); empty = off
+- **`ha` CLI preinstalled and pre-authenticated** — Supervisor token env-only, never written to disk
 
 ## Requirements
 
@@ -102,12 +104,12 @@ model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 
 ## Memory (mem0) examples
 
-Memory is **optional** and decoupled: it's one extra MCP server the wrapper never hardcodes. The defaults point at your LAN mem0 layer, or set anything else:
+Point the add-on at any MCP memory server, or none:
 
-| Use case | Options to set |
+| Want | Set |
 |---|---|
-| Shared memory with Open WebUI (mem0-mcp-wrapper on your LAN) | `mem0_mcp_url=http://<host>:8300/mcp`, `mem0_mcp_token=<its bearer>` (or `mem0_mcp_token_url` pointing at the token file) |
-| A different/own memory server (`mem0ai` cloud via a wrapper, OpenMemory, or any MCP memory server) | same two options, its URL + its token |
+| Shared memory with Open WebUI | `mem0_mcp_url` + `mem0_mcp_token` (or `mem0_mcp_token_url`) |
+| Another MCP memory server | same two options, its URL + token |
 | No memory | leave `mem0_mcp_url` empty |
 
 **Usage from the agent**, once wired (these are the mem0-mcp-wrapper's tools; similar clients expose similar ones):
@@ -125,13 +127,9 @@ memory_history(memory_id="<id from search>")
 
 **Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token (+ this add-on's `mem0_mcp_token`) per install. See the wrapper's README security notes.
 
-## Central config: hosted by anyone
+## Central config (optional)
 
-The `crush_config_url` is **plain HTTP** — any static file server works. It's a single text file (the crushrc) fetched at add-on start. No auth, no API — host it however:
-
-- **Another instance of Crush** — the natural fit: any machine already running Crush with a working crushrc can share that same file over HTTP; point `crush_config_url` at the copy and the HA install boots with the same config as the rest of the fleet. (Caddy, `python -m http.server`, a NAS share over HTTP, or GitHub Pages all work equally well.)
-
-**How keys fit central configs**: the crushrc is real Bash; resolve secrets from the ENV (the add-on exports `OLLAMA_API_KEY` from its options before running crushrc), NOT inline in the template — that keeps one shared template safe for a fleet while keys stay per-machine. The add-on also persists resolved keys to `~/.config/crush/ollama.env` (chmod 600), which survives restarts and stays out of the template file.
+`crush_config_url` = any **plain-HTTP URL** of a crushrc text file. The natural host: another machine already running Crush (share its rc file), or any static server (Caddy, `python -m http.server`, NAS, GitHub Pages). On start the add-on fetches it; keys stay out of the template — the rc resolves secrets from the environment the add-on exports, so one template serves a fleet safely.
 
 ## API usage (the `ha` CLI + HA's REST)
 
@@ -160,19 +158,17 @@ Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` 
 
 ## Environment variables
 
-Every option can be set as an environment variable instead of (or in priority above) the add-on
-Options tab. **Precedence: real environment > `/homeassistant/.crushdata/env` file > Options tab
-value > central URL > persisted file.**
+Every option has an env equivalent. **Precedence: real environment > env file > Options tab.**
 
 | Env var | Matches option | Notes |
 |---|---|---|
 | `THIRD_PARTY_BASE_URL` | Third-Party Base URL | Required with Provider = third_party (OpenAI-compatible endpoint) |
 | `THIRD_PARTY_API_KEY` | Third-Party API Key | Required with Provider = third_party |
 | `LOCAL_OLLAMA_URL` | LAN Ollama URL | Local Ollama base for `ollama-local` models |
-| `CRUSH_LARGE_MODEL` | Default daily model | Model registration id (`provider/model`) — e.g. `ollama-cloud/glm-5.3-flash`. Set as env in `.crushdata/env` or pick in the Options dropdown |
-| `CRUSH_SMALL_MODEL` | Helper/small model | Same form; used by crush for summaries/titles |
-| `CRUSH_DEEP_MODEL` | Deep reasoning model | Registered and tagged as the reasoning pick; switched to via TUI `/` picker |
-| `CRUSH_REASONING_EFFORT` | Reasoning effort | `low`/`high`/`max` applied to the daily model (`high` default) |
+| `CRUSH_LARGE_MODEL` | Default daily model | Registration id (`provider/model`) |
+| `CRUSH_SMALL_MODEL` | Helper model | Summaries/titles |
+| `CRUSH_DEEP_MODEL` | Deep model | Switch to it via the TUI picker |
+| `CRUSH_REASONING_EFFORT` | Daily-model effort | `low` / `high` / `max` |
 | `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
 | `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
 | `MEM0_MCP_TOKEN` | mem0 MCP Token | Bearer for the memory MCP server |
@@ -180,30 +176,20 @@ value > central URL > persisted file.**
 | `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
 | `TERM` | — | xterm-256color (set by the add-on) |
 
-**Three ways to set them**
+**Where to set them**
 
-1. **The env file** — create
-   `/homeassistant/.crushdata/env` in the add-on's web terminal (or the file editor), one
-   `KEY=VALUE` per line:
+1. **The env file** — `/homeassistant/.crushdata/env`, one `KEY=VALUE` line each:
 
    ```bash
-   OLLAMA_API_KEY=sk-...
+   OLLAMA_API_KEY=...
    MEM0_MCP_TOKEN=...
-   CRUSH_CONFIG_URL=http://my-server:8887/crushrc.template
    ```
 
-   It is sourced (shell-syntax, `set -a`) on every add-on start, survives restarts/rebuilds, ships
-   in HA backups, and **wins over the Options tab** — handy for secrets you don't want shown in the
-   options UI. `chmod 600` it.
-2. **The Options tab** — plain values; each one also lands in `/data/options.json`, and secrets
-   there are replaced into the env chain unless a higher-precedence value exists.
-3. **Real environment (supervised/docker users only)** — HAOS users cannot set container env
-   directly; but on a supervised install running the add-on image yourself:
-   `docker run -e OLLAMA_API_KEY=... ...`. Real env beats the file and the tab.
+   Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
+2. **The Options tab** — same names, UI form.
+3. **Real env** (`docker run -e`, supervised installs only) — highest precedence.
 
-**API-key-related envs behave the same way** — the crushrc is Bash, so `OLLAMA_API_KEY`,
-`MEM0_MCP_TOKEN`, and any custom value live in the same namespace; a fetched central template
-resolves its secrets from these envs (never inline), keeping the template fleet-safe.
+A fetched central crushrc resolves its secrets from these envs — never inline — so one template stays fleet-safe.
 
 ## File locations (inside the add-on)
 
