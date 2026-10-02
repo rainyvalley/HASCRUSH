@@ -55,14 +55,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
       - name: Build (${{ matrix.arch }})
         run: |
           arch=${{ matrix.arch }}
           case "$arch" in
-            amd64) BUILD_ARCH=amd64 ;;
-            aarch64) BUILD_ARCH=aarch64 ;;
+            amd64) BUILD_ARCH=amd64; PLATFORM=linux/amd64 ;;
+            aarch64) BUILD_ARCH=aarch64; PLATFORM=linux/arm64 ;;
           esac
-          docker build \
+          docker buildx build --platform $PLATFORM --load \
             --build-arg BUILD_FROM=ghcr.io/home-assistant/${arch}-base:3.21 \
             --build-arg BUILD_ARCH=$BUILD_ARCH \
             -t charm-crush:$arch charm-crush/
