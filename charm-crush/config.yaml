@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
-version: "1.0.2"
+version: "1.0.3"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
@@ -8,7 +8,7 @@ arch:
   - aarch64
 startup: application
 boot: auto
-init: true
+init: false   # s6-overlay must be pid 1 (init:true re-parents it -> "can only run as pid 1")
 ingress: true
 ingress_port: 7681
 ingress_stream: true
