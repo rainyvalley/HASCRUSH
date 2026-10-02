@@ -2,7 +2,7 @@
 # Crush add-on startup: config fetch + key resolution + persistence + ttyd.
 set -e
 
-export HA_TOKEN="$SUPERVISOR_TOKEN"
+HA_TOKEN="${SUPERVISOR_TOKEN:-}"; export HA_TOKEN
 export HA_URL="http://supervisor/core"
 
 PERSIST_DIR=/homeassistant/.crushdata
@@ -20,6 +20,14 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 # Missing file = no defaults set; everything still works from options/schema.
 ENV_FILE="$PERSIST_DIR/env"
 if [ -r "$ENV_FILE" ]; then
+  # Only KEY=VALUE and export KEY=VALUE lines are honored - anything else
+  # (shell code, pipes, command substitution) is refused, so a stray line can
+  # never execute as code at startup.
+  BAD=$(grep -vE '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*="?[A-Za-z0-9_./:@+%-]*"?[[:space:]]*(#.*)?$' "$ENV_FILE" || true)
+  if [ -n "$BAD" ]; then
+    echo "[addon][WARN] $ENV_FILE has non KEY=VALUE lines - they were NOT executed:" >&2
+    echo "$BAD" >&2 | sed 's/^/    /'
+  fi
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"
@@ -92,7 +100,7 @@ export OLLAMA_API_KEY
 : "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
 
 provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
-provider add ollama-local --type ollama --base-url "${LOCAL_OLLAMA_URL:-http://203.0.113.10:11434/v1}"
+provider add ollama-local --type ollama --base-url "${LOCAL_OLLAMA_URL:?set the local_ollama_url option (or LOCAL_OLLAMA_URL) to your Ollama host}"
 
 # Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
@@ -145,7 +153,7 @@ if [ -n "$OPT_KEY" ]; then
   sed -i 's/^OLLAMA_API_KEY=.*/OLLAMA_API_KEY='"$OPT_KEY"'/' "$keyfile" 2>/dev/null \
     || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
   grep -q '^OLLAMA_API_KEY=' "$keyfile" || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
-  echo "[addon][INFO] ollama API key set from the add-on option"
+  echo "[addon][INFO] ollama API key set (env/env-file/option)"
 elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 "$KEY_URL" -o /tmp/key.new 2>/dev/null \
      && grep -q '^OLLAMA_API_KEY=' /tmp/key.new; then
   CENTRAL=$(grep -m1 '^OLLAMA_API_KEY=' /tmp/key.new)
@@ -177,6 +185,50 @@ if [ -n "$MEM0_URL" ]; then
     printf '\nmcp add mem0 --type http --url "%s" --header Authorization "Bearer $MEM0_MCP_TOKEN"\n' "$MEM0_URL" >> "$crushrc"
   fi
 fi
+
+# ── Model defaults from options/env (apply to fetched or fallback rc) ──
+# CRUSH_LARGE_MODEL / CRUSH_SMALL_MODEL / CRUSH_DEEP_MODEL / CRUSH_REASONING_EFFORT envs or the
+# matching add-on options rewire the slots to whatever the operator picked; unknown/skipped values
+# leave the config's own slots in place.
+apply_model_slot() {
+  # $1 = slot (large|small), $2 = chosen model id ("" = keep config's choice).
+  # Replaces ONLY the model id, preserving any trailing flags (effort etc.).
+  [ -n "$2" ] || return 0
+  if grep -qE "^model $1 " "$crushrc" 2>/dev/null; then
+    sed -i "s#^model $1 [^ ]*#model $1 $2#" "$crushrc"
+  else
+    printf '\nmodel %s %s\n' "$1" "$2" >> "$crushrc"
+  fi
+}
+LARGE_MODEL="${CRUSH_LARGE_MODEL:-$(jq -r '.crush_large_model // ""' /data/options.json)}"
+SMALL_MODEL="${CRUSH_SMALL_MODEL:-$(jq -r '.crush_small_model // ""' /data/options.json)}"
+DEEP_MODEL="${CRUSH_DEEP_MODEL:-$(jq -r '.crush_deep_model // ""' /data/options.json)}"
+EFFORT="${CRUSH_REASONING_EFFORT:-$(jq -r '.crush_reasoning_effort // ""' /data/options.json)}"
+apply_model_slot large "$LARGE_MODEL"
+apply_model_slot small "$SMALL_MODEL"
+# deep model: register if not already registered (escaped, busybox-safe grep)
+if [ -n "$DEEP_MODEL" ]; then
+  ESC=$(printf '%s' "$DEEP_MODEL" | sed 's/[.[\\*+^$()|?{]/\\&/g')
+  grep -qE "^model add .*/$ESC( |$)" "$crushrc" 2>/dev/null || \
+    printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$DEEP_MODEL" >> "$crushrc"
+fi
+
+if [ -n "$EFFORT" ]; then
+  case "$EFFORT" in
+    low|high|max)
+      sed -i "s/--reasoning-effort [a-z]*/--reasoning-effort $EFFORT/g" "$crushrc"
+      for _slot in large small; do
+        if grep -qE "^model ${_slot} " "$crushrc" && ! grep -qE "^model ${_slot} .*--reasoning-effort" "$crushrc"; then
+          sed -i "s#^model ${_slot} .*#& --reasoning-effort $EFFORT#" "$crushrc"
+        fi
+      done
+      ;;
+    *)
+      echo "[addon][WARN] crush_reasoning_effort: '$EFFORT' not low|high|max - ignored"
+      ;;
+  esac
+fi
+[ -n "$LARGE_MODEL$SMALL_MODEL$DEEP_MODEL$EFFORT" ] && echo "[addon] model defaults applied from options/env"
 
 # NOTE for crushrc users: the crushrc is BASH - it resolves OLLAMA_API_KEY and
 # MEM0_MCP_TOKEN from the environment (exported above), so the fetched central
