@@ -63,7 +63,7 @@ jobs:
             aarch64) BUILD_ARCH=aarch64 ;;
           esac
           docker build \
-            --build-arg BUILD_FROM=ghcr.io/home-assistant/${arch}-base-python:3.13-alpine3.21 \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/${arch}-base:3.21 \
             --build-arg BUILD_ARCH=$BUILD_ARCH \
             -t charm-crush:$arch charm-crush/
 
