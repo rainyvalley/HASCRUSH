@@ -96,11 +96,14 @@ else
     cat > "$crushrc" <<'RCEOF'
 # Built-in fallback crushrc (add-on). Set crush_config_url to manage centrally.
 
-# Key resolution: addon option/env -> persisted file
-OLLAMA_API_KEY="${OLLAMA_API_KEY:-$(jq -r '.ollama_api_key // ""' /data/options.json 2>/dev/null)}"
-: "${OLLAMA_API_KEY:-$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -d= -f2)}"
+# Key resolution: environment -> addon option -> persisted file.
+# NOTE the classic bug fixed here: `: "${VAR:-cmd}"` does NOT assign!
+[ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(jq -r '.ollama_api_key // ""' /data/options.json 2>/dev/null)"
+[ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -s -d= -f2)"
 export OLLAMA_API_KEY
-: "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
+[ -n "$OLLAMA_API_KEY" ] || { echo "ERROR: FAILED - no Ollama API key. Set the add-on option
+or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env (home is not
+defined without it)."; exit 1; }
 
 provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
 if [ -n "$LOCAL_OLLAMA_URL" ]; then
@@ -126,6 +129,11 @@ option notifications auto
 RCEOF
     echo "[addon] built-in fallback crushrc written (set crush_config_url to manage centrally)"
   else
+    # migrate old fallback rcs written before the ':?'-no-assign fix
+    if grep -q '^: "${OLLAMA_API_KEY:?' "$crushrc" 2>/dev/null; then
+      sed -i '/^: "${OLLAMA_API_KEY:?/d' "$crushrc"
+      echo "[addon] migrated existing crushrc (key assignment bug fixed)"
+    fi
     echo "[addon] keeping existing crushrc (central template unreachable)"
   fi
 fi
