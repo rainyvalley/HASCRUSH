@@ -1,3 +1,5 @@
+name: HASSCrush
+
 configuration:
   provider:
     name: LLM Provider
