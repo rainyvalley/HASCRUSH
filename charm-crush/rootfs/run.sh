@@ -139,7 +139,7 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon][ERROR] provider=third_party but third_party_base_url / third_party_api_key are missing - falling back to ollama"
   else
     TPID=openai-compat-3p
-    sed -iE "s#provider add ollama-cloud#provider add $TPID#" "$crushrc"
+    sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
     sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
     # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
@@ -230,11 +230,13 @@ fi
 if [ -n "$EFFORT" ]; then
   case "$EFFORT" in
     low|high|max)
-      sed -i "s/--reasoning-effort [a-z]*/--reasoning-effort $EFFORT/g" "$crushrc"
+      # strip existing effort flags from the DAILY slot lines only, then append
+      # the chosen effort (busybox-safe: no backreferences, line-targeted)
       for _slot in large small; do
-        if grep -qE "^model ${_slot} " "$crushrc" && ! grep -qE "^model ${_slot} .*--reasoning-effort" "$crushrc"; then
-          sed -i "s#^model ${_slot} .*#& --reasoning-effort $EFFORT#" "$crushrc"
-        fi
+        _line=$(grep -E "^model ${_slot} " "$crushrc" | head -1 || true)
+        [ -n "$_line" ] || continue
+        _clean=$(printf '%s\n' "$_line" | sed "s/[[:space:]]*--reasoning-effort [a-z]*//")
+        sed -i "s#^${_line}\$#${_clean} --reasoning-effort ${EFFORT}#" "$crushrc" 2>/dev/null || true
       done
       ;;
     *)
