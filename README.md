@@ -35,6 +35,27 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 3. Configure options (see below) — at minimum an **Ollama API Key** (or a key URL), unless your config template resolves the key itself.
 4. Start the add-on; open it from the sidebar (panel title "Crush").
 
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `provider` | `ollama` | `ollama` (Ollama Cloud + LAN) or `third_party` (any OpenAI-compatible API) |
+| `third_party_base_url` | *(empty)* | Required with `third_party`: e.g. `https://openrouter.ai/api/v1` |
+| `third_party_api_key` | *(empty)* | Required with `third_party` |
+| `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local/vision models |
+| `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
+| `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL). Same key the mem0 REST API uses when mem0 shares it |
+| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` |
+| `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
+| `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
+| `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
+| `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
+| `mem0_mcp_url` / `mem0_mcp_token` / `mem0_mcp_token_url` | *(empty)* | Shared memory layer (see Memory section); url empty = off |
+| `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
+| `working_directory` | `/homeassistant` | Where crush starts |
+| `session_persistence` | `true` | tmux session survives disconnects |
+| `auto_update_crush` | `true` | Update crush on add-on start (with rollback) |
+
 ## LLM provider: Ollama (default) or any 3rd-party OpenAI-compatible API
 
 The **Provider** picklist in the Options tab chooses where models come from:

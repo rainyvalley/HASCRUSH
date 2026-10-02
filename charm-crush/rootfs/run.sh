@@ -44,6 +44,8 @@ rm -rf /root/.local/share/crush
 ln -sfn "$PERSIST_DIR/data" /root/.local/share/crush
 
 # ── CRUSH.md: standing instructions for the agent ──────────────────────
+# Written ONCE; user edits persist (delete the file to get a fresh default).
+if [ ! -f "$PERSIST_DIR/CRUSH.md" ]; then
 cat > "$PERSIST_DIR/CRUSH.md" <<'EOF'
 # Crush - Home Assistant Add-on
 
@@ -78,13 +80,14 @@ Automation and configuration files live in /homeassistant
 Log levels: `debug` < `info` < `warning` < `error`. `_LOGGER.debug()` output
 is invisible unless debug logging is enabled in configuration.yaml.
 EOF
+fi
 
 # ── crushrc: central template, or a self-contained fallback ────────────
 crushrc="$PERSIST_DIR/config/crush/crushrc"
 CONFIG_URL="${CRUSH_CONFIG_URL:-$(jq -r '.crush_config_url // ""' /data/options.json)}"
 if [ -n "$CONFIG_URL" ] \
    && curl -fsSL --max-time 10 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
-   && head -c 1000 /tmp/crushrc.new | grep -qE 'provider add|crushrc|model add'; then
+   && head -c 2000 /tmp/crushrc.new | grep -qE '(provider|model) (add|large|small)|crushrc'; then
   mkdir -p "$(dirname "$crushrc")"
   mv -f /tmp/crushrc.new "$crushrc"   # same-dir move = atomic
   echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
@@ -136,8 +139,7 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon][ERROR] provider=third_party but third_party_base_url / third_party_api_key are missing - falling back to ollama"
   else
     TPID=openai-compat-3p
-    sed -iE "s#provider add [a-z-]*#[provider add $TPID]#" "$crushrc"
-    sed -iE "s#provider add [a-z-]*#provider add $TPID#" "$crushrc"
+    sed -iE "s#provider add ollama-cloud#provider add $TPID#" "$crushrc"
     sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
     # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
