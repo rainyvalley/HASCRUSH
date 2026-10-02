@@ -1,6 +1,8 @@
 # HASSCharm — Home Assistant add-ons for Charm tools
 
-![Crush](charm-crush/logo.png)
+<p align="center">
+  <img src="charm-crush/logo.png" alt="Crush" width="520">
+</p>
 
 Charm's terminal AI tools running inside Home Assistant, pointed at your own models and infrastructure.
 
