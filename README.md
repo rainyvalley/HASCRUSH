@@ -158,6 +158,14 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 
 Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` only resolves inside add-ons.
 
+**Why there is no field for the Supervisor API key:** the Supervisor injects it itself
+(`SUPERVISOR_TOKEN` env, re-exported as `HA_TOKEN`) because the add-on declares
+`homeassistant_api` / `hassio_api` / `hassio_role: manager` in config.yaml. Nothing to paste,
+and it re-keys on every add-on update. `401/403` denials from these APIs mean the add-on needs
+an update/reinstall — except the **expected** ones (`hassio` API paths, `supervisor.*` websocket
+commands, docker, admin-only endpoints), which every add-on gets denied. Full table: the add-on's
+Documentation tab (DOCS.md, *Where the Supervisor API key comes from*).
+
 ## Environment variables
 
 Every option has an env equivalent. **Precedence: real environment > env file > Options tab.**
@@ -222,6 +230,7 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **`Unauthorized` errors in crush**: stale key — set the `ollama_api_key` option directly (it wins over everything), then restart the add-on.
 - **Model not in picker**: add it to the crushrc (central template or local file), restart the add-on.
 - **`ha` command errors**: `HA_URL`/`HA_TOKEN` are automapped; if `ha` still fails, check the Supervisor connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
+- **Supervisor API `401`/`403` denials**: no field exists for this key — the Supervisor injects `SUPERVISOR_TOKEN` itself (granted by the `homeassistant_api`/`hassio_api`/`hassio_role` flags in config.yaml). Check the add-on log's startup self-check: `Supervisor API: OK` means the key is fine and remaining denials are the expected ones (hassio paths, `supervisor.*` websocket commands, docker, admin-only endpoints — see DOCS.md). `DENIED 401/403` → update or reinstall the add-on. Profile-page long-lived tokens never work on `http://supervisor`.
 - **mem0 tools error**: check the `mem0_mcp_url` is reachable from the HA host and the token is correct.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 

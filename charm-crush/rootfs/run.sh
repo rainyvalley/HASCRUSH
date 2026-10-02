@@ -16,6 +16,30 @@ export HOME="${HOME:-/root}"
 export USER="${USER:-root}"
 export SHELL="${SHELL:-/bin/bash}"
 
+# ── Supervisor API self-check: make denials visible at startup ──────────
+# SUPERVISOR_TOKEN is injected by the Supervisor itself (never by the user);
+# the hassio_api / homeassistant_api flags in config.yaml grant its reach.
+# One test call each so a denial shows up in the add-on log with a cause,
+# instead of as bare 401s later - there is no option field for this key,
+# only these flags (update/reinstall the add-on if they ever 401/403).
+if [ -z "$HA_TOKEN" ]; then
+  echo "[addon][WARN] SUPERVISOR_TOKEN missing - HA/supervisor API calls will 401 (update or reinstall the add-on so the Supervisor issues its key)"
+else
+  SUP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/info || true)
+  case "$SUP_CODE" in
+    200) echo "[addon] Supervisor API: OK (token accepted, manager role)" ;;
+    401) echo "[addon][WARN] Supervisor API: token DENIED 401 (invalid/re-keyed) - update or reinstall the add-on" ;;
+    403) echo "[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on" ;;
+    *)   echo "[addon][WARN] Supervisor API: unreachable (HTTP ${SUP_CODE:-none}) - Supervisor restarting or DNS issue" ;;
+  esac
+  CORE_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/core/api/ || true)
+  case "$CORE_CODE" in
+    200) echo "[addon] HA Core API: OK (homeassistant_api granted)" ;;
+    401) echo "[addon][WARN] HA Core API: token DENIED 401 - homeassistant_api not active; update the add-on" ;;
+    *)   echo "[addon][WARN] HA Core API: not reachable (HTTP ${CORE_CODE:-none}) - normal while HA Core is still starting" ;;
+  esac
+fi
+
 PERSIST_DIR=/homeassistant/.crushdata
 mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config /root/.local/share
 chmod 700 "$PERSIST_DIR" 2>/dev/null || true
@@ -87,6 +111,33 @@ Automation and configuration files live in /homeassistant
 | `/media` | Media files | read-write |
 | `/ssl` | SSL certificates | read-only |
 | `/backup` | Backups | read-only |
+
+## Home Assistant API - keys are already wired (ask for none)
+
+Two tokens are ALREADY in the environment - never ask the user for a key:
+- `HA_TOKEN` (= `SUPERVISOR_TOKEN`) - the add-on's own Supervisor key,
+  injected by the Supervisor itself. Valid only inside this add-on and only
+  against the supervisor proxy, not HA Core directly.
+- `HA_URL` = `http://supervisor/core` - HA Core API base (`${HA_URL}/api/...`).
+
+Correct calls (no setup needed):
+- `ha` CLI (preferred, token+URL pre-wired): `ha core logs`, `ha core stats`,
+  `ha host info`, `ha addons`, `ha os`, `ha network`, ... 
+- REST: `curl -s -H "Authorization: Bearer ${HA_TOKEN}" "${HA_URL}/api/states/<entity>"`
+
+These denials are EXPECTED - do not retry, report to the user instead:
+- `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` -> 403
+  (blacklisted path for every add-on)
+- websocket `supervisor.`/`hassio.` command types -> `unauthorized`
+  (blocked in the core proxy since Supervisor 2026.08) - use the `ha` CLI
+  or REST instead
+- `/os/ssh/authorized_keys`, `/addons/<slug>/security` -> need an admin-role
+  add-on; this add-on's manager role deliberately cannot
+- docker CLI -> no docker socket by design; if a task truly needs it the
+  USER can toggle Protection mode for this add-on in Settings
+
+A long-lived access token from the user's HA Profile page does NOT work on
+`http://supervisor` - only the injected token does.
 
 Log levels: `debug` < `info` < `warning` < `error`. `_LOGGER.debug()` output
 is invisible unless debug logging is enabled in configuration.yaml.
