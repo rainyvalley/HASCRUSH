@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
-version: "1.0.5"
+version: "1.0.6"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
