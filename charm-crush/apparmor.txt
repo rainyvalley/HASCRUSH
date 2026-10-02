@@ -3,8 +3,20 @@
 profile charm-crush flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
-  # The s6-overlay entrypoint (tini execs /init)
+  # The s6-overlay entrypoint (tini execs /init) and its toolchain. The exec
+  # resolves through symlink chains: /usr/bin/s6-overlay-suexec -> /command/...
+  # -> /package/admin/s6-overlay-helpers/command/s6-overlay-suexec. Rules apply
+  # to both real and link paths (HA's supervisord passes the profile to the
+  # apparmor_parser which resolves symlinks for exec, but read/mmap on the link
+  # path still needs explicit r).
+  / r,
   /init rix,
+  /package/ r,
+  /package/** rix,
+  /command/ r,
+  /command/** rix,
+  /run/s6/** rwk,
+  /run/** rwk,
 
   capability net_admin,
   capability net_raw,
