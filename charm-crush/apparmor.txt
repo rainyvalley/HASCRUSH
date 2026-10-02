@@ -16,6 +16,8 @@ profile charm-crush flags=(attach_disconnected,mediate_deleted) {
   /command/ r,
   /command/** rix,
   /run/s6/** rwk,
+  /run/s6/basedir/bin/** rix,
+  /run/s6/**/libexec/** rix,
   /run/** rwk,
 
   capability net_admin,
