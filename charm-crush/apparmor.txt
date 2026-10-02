@@ -3,6 +3,9 @@
 profile charm-crush flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
+  # The s6-overlay entrypoint (tini execs /init)
+  /init rix,
+
   capability net_admin,
   capability net_raw,
   capability setgid,
