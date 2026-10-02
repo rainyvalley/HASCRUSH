@@ -123,6 +123,8 @@ memory_history(memory_id="<id from search>")
 
 `user_id` matters: it's the memory space. Use the **same id in every client** (Open WebUI filter's `user_id_field=email` + crushrc defaults) and everything shares one brain.
 
+**Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token (+ this add-on's `mem0_mcp_token`) per install. See the wrapper's README security notes.
+
 ## Central config: hosted by anyone
 
 The `crush_config_url` is **plain HTTP** — any static file server works. It's a single text file (the crushrc) fetched at add-on start. No auth, no API — host it however:
