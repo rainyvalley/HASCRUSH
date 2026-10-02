@@ -100,7 +100,9 @@ export OLLAMA_API_KEY
 : "${OLLAMA_API_KEY:?set the Ollama API key add-on option, or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env}"
 
 provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
-provider add ollama-local --type ollama --base-url "${LOCAL_OLLAMA_URL:?set the local_ollama_url option (or LOCAL_OLLAMA_URL) to your Ollama host}"
+if [ -n "$LOCAL_OLLAMA_URL" ]; then
+provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL"
+fi
 
 # Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
@@ -111,14 +113,13 @@ model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 model add ollama-cloud/glm-5.3 --name "GLM 5.3" --context-window 1000000 --default-max-tokens 128000 --can-reason true --reasoning-effort max --price-input 1.4 --price-output 4.4
 
 # Local vision (LAN Ollama) + cloud vision fallback
+if [ -n "$LOCAL_OLLAMA_URL" ]; then
 model add ollama-local/qwen3-vl:4b-instruct --context-window 8192 --supports-images true --name "Qwen3 VL 4B (local vision)"
+fi
 model add ollama-cloud/gemma4:31b --context-window 128000 --supports-images true --name "Gemma 4 31B (cloud vision)"
 
 option notifications auto
 
-# mem0-mcp (shared memory layer) - token from the addon option or the server
-MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json 2>/dev/null)}"
-mcp add mem0 --type http --url "${MEM0_MCP_URL}" --header Authorization "Bearer $MEM0_MCP_TOKEN"
 RCEOF
     echo "[addon] built-in fallback crushrc written (set crush_config_url to manage centrally)"
   else
@@ -135,9 +136,12 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon][ERROR] provider=third_party but third_party_base_url / third_party_api_key are missing - falling back to ollama"
   else
     TPID=openai-compat-3p
+    sed -iE "s#provider add [a-z-]*#[provider add $TPID]#" "$crushrc"
+    sed -iE "s#provider add [a-z-]*#provider add $TPID#" "$crushrc"
     sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
-    sed -i "s#--api-key \"\\$OLLAMA_API_KEY\"#--api-key \"$TP_KEY\"#" "$crushrc"
-    sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
+    # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
+    # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
+    # contain any character)
     export OLLAMA_API_KEY="$TP_KEY"
     echo "[addon] provider=third_party: models remapped to $TPID ($TP_URL)"
   fi
@@ -149,10 +153,11 @@ OPT_KEY="${OLLAMA_API_KEY:-$(jq -r '.ollama_api_key // ""' /data/options.json)}"
 KEY_URL="${OLLAMA_KEY_URL:-$(jq -r '.ollama_key_url // ""' /data/options.json)}"
 touch "$keyfile"; chmod 600 "$keyfile"
 if [ -n "$OPT_KEY" ]; then
-  # addon option wins; replace any existing line rather than appending dups
-  sed -i 's/^OLLAMA_API_KEY=.*/OLLAMA_API_KEY='"$OPT_KEY"'/' "$keyfile" 2>/dev/null \
-    || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
-  grep -q '^OLLAMA_API_KEY=' "$keyfile" || printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY" >> "$keyfile"
+  # addon option wins; rewrite the key file DELIBERATELY (not sed: keys may
+  # contain '/', '#' or other sed-specials which would corrupt s/// expressions)
+  { grep -v '^OLLAMA_API_KEY=' "$keyfile" || true; printf 'OLLAMA_API_KEY=%s\n' "$OPT_KEY"; } > "$keyfile.tmp"
+  mv "$keyfile.tmp" "$keyfile"
+  chmod 600 "$keyfile"
   echo "[addon][INFO] ollama API key set (env/env-file/option)"
 elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 "$KEY_URL" -o /tmp/key.new 2>/dev/null \
      && grep -q '^OLLAMA_API_KEY=' /tmp/key.new; then
@@ -175,10 +180,17 @@ if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
 fi
 export MEM0_MCP_TOKEN
 
-# mem0 MCP url / searxng (same memory layer as Open WebUI, served from the same host)
+# mem0 MCP url: optional shared-memory layer (empty = no mem0 in crush)
+# - unset url           : scrub any mem0 line (operator turned memory OFF)
+# - url but no token    : skip mem0 (would 401 forever) + warn
+# - url and token       : rewrite/append the mcp add mem0 line with both
 MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
-if [ -n "$MEM0_URL" ]; then
-  # replace or append the mem0 mcp line in the fetched crushrc
+if [ -z "$MEM0_URL" ]; then
+  sed -i '/mcp add mem0 /d' "$crushrc" 2>/dev/null || true
+elif [ -z "$MEM0_MCP_TOKEN" ]; then
+  echo "[addon][WARN] mem0_mcp_url set but no token found - mem0 MCP skipped"
+  sed -i '/mcp add mem0 /d' "$crushrc" 2>/dev/null || true
+else
   if grep -q "mcp add mem0" "$crushrc" 2>/dev/null; then
     sed -i "s#mcp add mem0 .*#mcp add mem0 --type http --url \"$MEM0_URL\" --header Authorization \"Bearer \$MEM0_MCP_TOKEN\"#" "$crushrc"
   else

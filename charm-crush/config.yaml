@@ -32,7 +32,7 @@ options:
   provider: ollama
   third_party_base_url: ""
   third_party_api_key: ""
-  local_ollama_url: "http://203.0.113.10:11434/v1"
+  local_ollama_url: ""      # e.g. http://<your-ollama-host>:11434/v1
   crush_config_url: ""   # optional: HTTP URL fetching your crushrc each start
   crush_large_model: "ollama-cloud/glm-5.3-flash"
   crush_small_model: "ollama-cloud/glm-5.3-flash"
