@@ -79,25 +79,69 @@ rm -rf /root/.local/share/crush
 ln -sfn "$PERSIST_DIR/data" /root/.local/share/crush
 
 # ── CRUSH.md: standing instructions for the agent ──────────────────────
-# Written ONCE; user edits persist (delete the file to get a fresh default).
-if [ ! -f "$PERSIST_DIR/CRUSH.md" ]; then
-cat > "$PERSIST_DIR/CRUSH.md" <<'EOF'
+# Crush ingests this file from its working directory on every start, so it is
+# the agent's default guardrail: what is pre-wired (ask for no keys) and which
+# denials are expected. Written ONCE; user edits persist (delete the file to
+# get a fresh default). Pre-1.0.12 installs lack the limits block - inject it
+# between the markers without touching their edits.
+CRUSH_MD="$PERSIST_DIR/CRUSH.md"
+LIMITS_START='<!-- hasscrush-limits-start -->'
+LIMITS_END='<!-- hasscrush-limits-end -->'
+LIMITS_BODY='<!-- hasscrush-limits-start -->
+## Hard Limits (pre-wired - ask for none, do not retry denials)
+
+| Thing | Status |
+|---|---|
+| Supervisor API key | ALREADY in the environment (`HA_TOKEN` = `SUPERVISOR_TOKEN`, injected by HA). Never ask the user for a key. |
+| HA Core API key | same token, `${HA_URL}/api/...` works as-is |
+| LAN Ollama / mem0 | pre-wired by the crushrc - nothing to configure |
+
+NEVER attempt or retry these - they are denied BY DESIGN; one try at most,
+then report to the user instead:
+- `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` -> 403 (blacklisted for every add-on)
+- websocket `supervisor.*`/`hassio.*` commands -> `unauthorized` (blocked since Supervisor 2026.08) - use the `ha` CLI or REST
+- `/os/ssh/authorized_keys`, `/addons/<slug>/security` -> admin-only; this add-on is manager
+- docker CLI -> no docker socket; the USER may toggle Protection mode if ever needed
+- Profile-page long-lived tokens do NOT work on `http://supervisor`
+
+Safe alternatives: `ha` CLI (pre-authed: `ha core logs`, `ha core stats`,
+`ha host info`, `ha addons`), REST with `$HA_TOKEN` (`${HA_URL}/api/states/...`,
+`${HA_URL}/api/services/...`), and plain files under the mapped paths.
+<!-- hasscrush-limits-end -->'
+inject_limits() {
+  # only when the markers are absent; never duplicate into edited files
+  grep -qF "$LIMITS_START" "$CRUSH_MD" && return 0
+  if grep -q '^##' "$CRUSH_MD"; then
+    line=$(grep -n '^##' "$CRUSH_MD" | head -1 | cut -d: -f1)
+    head -n $((line-1)) "$CRUSH_MD" > "$CRUSH_MD.tmp"
+    printf '%s\n' "$LIMITS_BODY" >> "$CRUSH_MD.tmp"
+    tail -n +$line "$CRUSH_MD" >> "$CRUSH_MD.tmp"
+  else
+    { cat "$CRUSH_MD"; printf '\n%s\n' "$LIMITS_BODY"; } > "$CRUSH_MD.tmp"
+  fi
+  mv "$CRUSH_MD.tmp" "$CRUSH_MD"
+  echo "[addon] hard-limits guardrails injected into $CRUSH_MD"
+}
+if [ ! -f "$CRUSH_MD" ]; then
+cat > "$CRUSH_MD" <<EOF
 # Crush - Home Assistant Add-on
+
+$LIMITS_BODY
 
 ## Path Mapping
 
 In this add-on container, paths map differently than HA Core:
-- `/homeassistant` = HA config directory (equivalent to `/config` in HA Core)
-- `/config` does NOT exist - always use `/homeassistant`
+- \`/homeassistant\` = HA config directory (equivalent to \`/config\` in HA Core)
+- \`/config\` does NOT exist - always use \`/homeassistant\`
 
-When users mention `/config/...`, translate to `/homeassistant/...`
+When users mention \`/config/...\`, translate to \`/homeassistant/...\`
 
 ## Home Assistant Integration
 
-Use the `ha` CLI (token + URL already set in the environment):
-- `ha core logs 2>&1 | tail -100`        - recent logs
-- `ha core logs 2>&1 | grep -i keyword`  - filter logs
-- `ha core stats` / `ha host info`       - system status
+Use the \`ha\` CLI (token + URL already set in the environment):
+- \`ha core logs 2>&1 | tail -100\`        - recent logs
+- \`ha core logs 2>&1 | grep -i keyword\`  - filter logs
+- \`ha core stats\` / \`ha host info\`       - system status
 
 Automation and configuration files live in /homeassistant
 (automations.yaml, configuration.yaml, scripts.yaml, ...).
@@ -106,42 +150,17 @@ Automation and configuration files live in /homeassistant
 
 | Path | Description | Access |
 |------|-------------|--------|
-| `/homeassistant` | HA configuration | read-write |
-| `/share` | Shared folder | read-write |
-| `/media` | Media files | read-write |
-| `/ssl` | SSL certificates | read-only |
-| `/backup` | Backups | read-only |
+| \`/homeassistant\` | HA configuration | read-write |
+| \`/share\` | Shared folder | read-write |
+| \`/media\` | Media files | read-write |
+| \`/ssl\` | SSL certificates | read-only |
+| \`/backup\` | Backups | read-only |
 
-## Home Assistant API - keys are already wired (ask for none)
-
-Two tokens are ALREADY in the environment - never ask the user for a key:
-- `HA_TOKEN` (= `SUPERVISOR_TOKEN`) - the add-on's own Supervisor key,
-  injected by the Supervisor itself. Valid only inside this add-on and only
-  against the supervisor proxy, not HA Core directly.
-- `HA_URL` = `http://supervisor/core` - HA Core API base (`${HA_URL}/api/...`).
-
-Correct calls (no setup needed):
-- `ha` CLI (preferred, token+URL pre-wired): `ha core logs`, `ha core stats`,
-  `ha host info`, `ha addons`, `ha os`, `ha network`, ... 
-- REST: `curl -s -H "Authorization: Bearer ${HA_TOKEN}" "${HA_URL}/api/states/<entity>"`
-
-These denials are EXPECTED - do not retry, report to the user instead:
-- `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` -> 403
-  (blacklisted path for every add-on)
-- websocket `supervisor.`/`hassio.` command types -> `unauthorized`
-  (blocked in the core proxy since Supervisor 2026.08) - use the `ha` CLI
-  or REST instead
-- `/os/ssh/authorized_keys`, `/addons/<slug>/security` -> need an admin-role
-  add-on; this add-on's manager role deliberately cannot
-- docker CLI -> no docker socket by design; if a task truly needs it the
-  USER can toggle Protection mode for this add-on in Settings
-
-A long-lived access token from the user's HA Profile page does NOT work on
-`http://supervisor` - only the injected token does.
-
-Log levels: `debug` < `info` < `warning` < `error`. `_LOGGER.debug()` output
+Log levels: \`debug\` < \`info\` < \`warning\` < \`error\`. \`_LOGGER.debug()\` output
 is invisible unless debug logging is enabled in configuration.yaml.
 EOF
+else
+  inject_limits
 fi
 
 # ── crushrc: central template, or a self-contained fallback ────────────

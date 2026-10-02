@@ -188,16 +188,15 @@ supposed to be denied:
 | docker CLI / docker socket | fails | no `docker_api`/`full_access` by design (better security rating); toggle **Protection mode** per-install if a task truly needs it |
 | a long-lived access token from your HA Profile page against `http://supervisor` | 401 | profile tokens are HA Core tokens - the supervisor proxy only accepts the injected `SUPERVISOR_TOKEN` |
 
-At every add-on start, `run.sh` self-checks both endpoints (`http://supervisor/info`
-and `http://supervisor/core/api/`) and prints one of these lines to the add-on log:
+At every add-on start, `run.sh` also self-checks both endpoints (`http://supervisor/info`
+and `http://supervisor/core/api/`) and prints an OK or `DENIED <code>` line with the
+cause to the add-on log.
 
-```
-[addon] Supervisor API: OK (token accepted, manager role)
-[addon] HA Core API: OK (homeassistant_api granted)
-[addon][WARN] Supervisor API: token DENIED 401 (invalid/re-keyed) - update or reinstall the add-on
-[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on
-[addon][WARN] HA Core API: token DENIED 401 - homeassistant_api not active; update the add-on
-```
+The agent-facing version of these rules ships as the default `CRUSH.md`
+(in `/homeassistant/.crushdata/`): a **Hard Limits** block that Crush ingests on
+every start, telling it what is already wired (never ask for keys) and which
+denials to not retry. Written on first start; pre-1.0.12 installs get it
+injected automatically on the next add-on restart (user edits preserved).
 
 ## Environment variables
 
