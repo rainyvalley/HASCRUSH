@@ -2,8 +2,19 @@
 # Crush add-on startup: config fetch + key resolution + persistence + ttyd.
 set -e
 
+# Tell s6-overlay to keep the container environment (it strips it by default)
+export S6_KEEP_ENV=1
+
 HA_TOKEN="${SUPERVISOR_TOKEN:-}"; export HA_TOKEN
 export HA_URL="http://supervisor/core"
+
+# s6-overlay-suexec strips the container environment when it re-execs the
+# service stack; tmux/bash/crush then see an empty $HOME and abort with
+# "Failed to get user home directory". Re-pin the basics here (and let s6
+# keep the whole env below).
+export HOME="${HOME:-/root}"
+export USER="${USER:-root}"
+export SHELL="${SHELL:-/bin/bash}"
 
 PERSIST_DIR=/homeassistant/.crushdata
 mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config /root/.local/share
