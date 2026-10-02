@@ -18,9 +18,8 @@ homeassistant_api: true
 auth_api: true
 hassio_api: true
 hassio_role: manager
-uart: true
-docker_api: true
-full_access: true
+# full_access/docker_api intentionally ABSENT (default false) - better HA security rating.
+# If a crush task needs host/docker access, toggle "Protection mode" per-install in the UI.
 map:
   - homeassistant_config:rw
   - ssl:ro
