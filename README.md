@@ -10,7 +10,7 @@ Charm's terminal AI tools running inside Home Assistant, pointed at your own mod
 
 ---
 
-# Crush for Home Assistant
+# HASSCrush — the Crush add-on for Home Assistant
 
 Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first AI coding agent — inside Home Assistant, pointed at **your own Ollama models**, with optional shared memory.
 
