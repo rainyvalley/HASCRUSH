@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['charm-crush/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['charm-crush/**', '.github/workflows/ci.yml']
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate YAML (config, build, translations)
+        run: |
+          pip install --quiet pyyaml
+          python3 - <<'EOF'
+          import yaml
+          for f in ('charm-crush/config.yaml', 'charm-crush/build.yaml', 'charm-crush/translations/en.yaml'):
+              d = yaml.safe_load(open(f))
+              print(f, 'OK')
+          c = yaml.safe_load(open('charm-crush/config.yaml'))
+          t = yaml.safe_load(open('charm-crush/translations/en.yaml'))
+          missing_schema = [k for k in c['options'] if k not in (c.get('schema') or {})]
+          undocumented = [k for k in c['options'] if k not in (t.get('configuration') or {})]
+          assert not missing_schema, f'options missing schema entries: {missing_schema}'
+          assert not undocumented, f'options missing translations: {undocumented}'
+          print('schema + translations complete')
+          EOF
+
+      - name: Shell-check run.sh
+        run: |
+          bash -n charm-crush/rootfs/run.sh && echo 'run.sh syntax OK'
+          # light shellcheck-like scan: unquoted expansions / suspicious patterns
+          ! grep -nE '(^|[^"'"'"'])\$[A-Za-z_][A-Za-z0-9_]*[^}"]' charm-crush/rootfs/run.sh | \
+            grep -vE '\$\(|\$SUPERVISOR_TOKEN|eval' || true
+
+      - name: Secret scan
+        run: |
+          # nothing that looks like a real key may be committed
+          ! grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.168\.1\.252|dev@' \
+            --include='*.sh' --include='*.yaml' --include='*.yml' . || {
+            echo 'Secret-looking strings found:'; grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.168\.1\.252|dev@' . ; exit 1; }
+          echo 'no secrets'
+
+  build:
+    runs-on: ubuntu-latest
+    needs: validate
+    strategy:
+      matrix:
+        arch: [amd64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (${{ matrix.arch }})
+        run: |
+          arch=${{ matrix.arch }}
+          case "$arch" in
+            amd64) BUILD_ARCH=amd64 ;;
+            aarch64) BUILD_ARCH=aarch64 ;;
+          esac
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/${arch}-base-python:3.13-alpine3.21 \
+            --build-arg BUILD_ARCH=$BUILD_ARCH \
+            -t charm-crush:$arch charm-crush/
+
+      - name: Smoke test binaries
+        run: |
+          docker run --rm --entrypoint /bin/bash charm-crush:${{ matrix.arch }} -c '
+            crush --version | grep -q . || { echo "crush broken"; exit 1; }
+            ttyd --version | grep -q . || { echo "ttyd broken"; exit 1; }
+            ha --help 2>&1 | grep -q . || { echo "ha broken"; exit 1; }
+            bash -n /usr/local/bin/run.sh || { echo "run.sh broken"; exit 1; }
+            echo "binaries OK"'
