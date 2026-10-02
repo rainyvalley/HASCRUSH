@@ -163,7 +163,9 @@ Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` 
 `homeassistant_api` / `hassio_api` / `hassio_role: manager` in config.yaml. Nothing to paste,
 and it re-keys on every add-on update. `401/403` denials from these APIs mean the add-on needs
 an update/reinstall — except the **expected** ones (`hassio` API paths, `supervisor.*` websocket
-commands, docker, admin-only endpoints), which every add-on gets denied. Full table: the add-on's
+commands, docker, admin-only endpoints), which every add-on gets denied. The agent-facing
+summary ships as a "Hard Limits" block in the default `CRUSH.md` the add-on writes
+(`/homeassistant/.crushdata/`), ingested by Crush on every start. Full table: the add-on's
 Documentation tab (DOCS.md, *Where the Supervisor API key comes from*).
 
 ## Environment variables
