@@ -42,8 +42,8 @@ jobs:
         run: |
           # nothing that looks like a real key may be committed
           ! grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.168\.1\.252|dev@' \
-            --include='*.sh' --include='*.yaml' --include='*.yml' . || {
-            echo 'Secret-looking strings found:'; grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.168\.1\.252|dev@' . ; exit 1; }
+            --include='*.sh' --include='*.yaml' --include='*.yml' --exclude-dir=.github . || {
+            echo 'Secret-looking strings found:'; grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.168\.1\.252|dev@' --exclude-dir=.github . ; exit 1; }
           echo 'no secrets'
 
   build:
