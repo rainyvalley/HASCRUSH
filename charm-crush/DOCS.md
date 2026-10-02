@@ -158,6 +158,47 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 
 Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` only resolves inside add-ons.
 
+### Where the Supervisor API key comes from (no field for it - by design)
+
+There is **no option field** for the Supervisor API key, and you never need to paste one:
+the Supervisor itself injects a per-install token into the add-on as the environment
+variable `SUPERVISOR_TOKEN` (re-exported here as `HA_TOKEN`). It becomes valid only
+because `config.yaml` declares the API permissions:
+
+| config.yaml flag | Grants |
+|---|---|
+| `homeassistant_api: true` | calls to HA Core through the proxy (`http://supervisor/core/api/...`) |
+| `hassio_api: true` + `hassio_role: manager` | Supervisor API calls (`http://supervisor/...`) with manager-level reach |
+| `auth_api: true` | validating HA usernames/passwords via the Supervisor `/auth` endpoint |
+
+So "adding a key" is not something the Options tab can do - the key rotates with each
+install/update and the permission flags are fixed at build time. If you see
+`401 Unauthorized` / `403 Forbidden` from these APIs, the fix is to **update or reinstall
+the add-on** (so a fresh token gets issued and current permission flags land), not to
+fill in a field.
+
+**Denials that are normal (do not "fix" them)** - these are the attempts that are
+supposed to be denied:
+
+| What was attempted | Response | Why |
+|---|---|---|
+| `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` | 403 | blacklisted path for every add-on (blocks reaching the `hassio` integration through Core) |
+| WebSocket command types `supervisor.*` / `hassio.*` via `ws://supervisor/core/websocket` | `unauthorized` | blocked in the core proxy since Supervisor 2026.08 (#7123) - use the `ha` CLI or REST instead |
+| `/os/ssh/authorized_keys`, `/addons/<slug>/security` | 403 | need the `admin` role; this add-on deliberately runs `manager` |
+| docker CLI / docker socket | fails | no `docker_api`/`full_access` by design (better security rating); toggle **Protection mode** per-install if a task truly needs it |
+| a long-lived access token from your HA Profile page against `http://supervisor` | 401 | profile tokens are HA Core tokens - the supervisor proxy only accepts the injected `SUPERVISOR_TOKEN` |
+
+At every add-on start, `run.sh` self-checks both endpoints (`http://supervisor/info`
+and `http://supervisor/core/api/`) and prints one of these lines to the add-on log:
+
+```
+[addon] Supervisor API: OK (token accepted, manager role)
+[addon] HA Core API: OK (homeassistant_api granted)
+[addon][WARN] Supervisor API: token DENIED 401 (invalid/re-keyed) - update or reinstall the add-on
+[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on
+[addon][WARN] HA Core API: token DENIED 401 - homeassistant_api not active; update the add-on
+```
+
 ## Environment variables
 
 Every option has an env equivalent. **Precedence: real environment > env file > Options tab.**
@@ -221,6 +262,15 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **`Unauthorized` errors in crush**: stale key — set the `ollama_api_key` option directly (it wins over everything), then restart the add-on.
 - **Model not in picker**: add it to the crushrc (central template or local file), restart the add-on.
 - **`ha` command errors**: `HA_URL`/`HA_TOKEN` are automapped; if `ha` still fails, check the Supervisor connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
+- **Supervisor API `401` / `403` denials**: there is deliberately **no field to add a Supervisor API key** —
+  the Supervisor injects `SUPERVISOR_TOKEN` itself, and `config.yaml`'s `homeassistant_api` / `hassio_api` /
+  `hassio_role: manager` flags grant its reach (see *Where the Supervisor API key comes from* above).
+  If the startup self-check in the add-on log shows `Supervisor API: OK` lines, the key is fine and any
+  remaining denials are the *expected* ones (hassio paths, `supervisor.*` websocket commands, docker,
+  admin-only endpoints). If the self-check shows `DENIED 401`/`DENIED 403`, update or reinstall the add-on
+  so a fresh token + current permission flags are issued. Never paste a Profile-page long-lived token into
+  any field — it does not work against `http://supervisor`. Note: **updating the add-on re-keys it**;
+  tokens are only valid for the current install.
 - **mem0 tools error**: check the `mem0_mcp_url` is reachable from the HA host and the token is correct.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
