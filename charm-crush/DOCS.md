@@ -54,7 +54,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
-| `mem0_mcp_url` / `mem0_mcp_token` / `mem0_mcp_token_url` | *(empty)* | Shared memory layer (see Memory section); url empty = off |
+| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/searxng/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `mcp_servers` | *(empty)* | Any additional MCP servers as one JSON array (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
@@ -107,13 +107,13 @@ model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 
 ## Memory (mem0) examples
 
-Point the add-on at any MCP memory server, or none:
+Memory is one entry in the `mcp_servers` JSON (see next section), not a separate field:
 
 | Want | Set |
 |---|---|
-| Shared memory with Open WebUI | `mem0_mcp_url` + `mem0_mcp_token` (or `mem0_mcp_token_url`) |
-| Another MCP memory server | same two options, its URL + token |
-| No memory | leave `mem0_mcp_url` empty |
+| Shared memory with Open WebUI | a `mem0` entry with its URL + `token`/`token_url` |
+| Another MCP memory server | an entry named anything, its URL + token |
+| No memory | omit the mem0 entry (and set `mcp_servers` if any other server is wanted) |
 
 **Usage from the agent**, once wired (these are the mem0-mcp-wrapper's tools; similar clients expose similar ones):
 
@@ -128,32 +128,31 @@ memory_history(memory_id="<id from search>")
 
 `user_id` matters: it's the memory space. Use the **same id in every client** (Open WebUI filter's `user_id_field=email` + crushrc defaults) and everything shares one brain.
 
-**Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token (+ this add-on's `mem0_mcp_token`) per install. See the wrapper's README security notes.
+**Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token on this add-on's `mem0` entry per install. See the wrapper's README security notes.
 
-## MCP servers (vision, searxng, openscad, ...)
+## MCP servers (mem0, vision, searxng, openscad, ...)
 
-Any MCP server can be wired from the Options tab via `mcp_servers` — one JSON array, each entry one server. Entries **replace only their own server's line**; a central template's other `mcp add` lines stay untouched. Empty = template servers as-is. Applies on add-on restart.
+**All** MCP servers — memory included — are wired from the Options tab via one option: `mcp_servers`, a JSON array with one entry per server. Entries **replace only their own server's line**; a central template's other `mcp add` lines stay untouched. Empty = template servers as-is. Applies on add-on restart.
 
-**HTTP server** (with token fetched at startup):
-
-```json
-[{"name":"vision","url":"http://192.0.2.10:3011/mcp","token_url":"http://192.0.2.10:8887/vision-mcp.token"}]
-```
-
-- `"token":"..."` instead of `token_url` pastes the bearer directly; omit both for servers without auth (e.g. `searxng`: `[{"name":"searxng","url":"http://192.0.2.10:3000/mcp"}]`).
-- If the token URL yields nothing, the server is still added **without** an auth header and a warning lands in the add-on log — a LAN server may legitimately not need auth.
-
-**stdio server** (openscad rides a docker socat bridge to a TCP-only MCP):
+**Complete example** (fake host/keys — copy the shape, replace the values):
 
 ```json
-[{"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],"timeout":20}]
+[{"name":"mem0","url":"http://mcp.example.lan:8300/mcp","token_url":"http://mcp.example.lan/mem0.token"},
+ {"name":"vision","url":"http://mcp.example.lan:3011/mcp","token":"sample-vision-token"},
+ {"name":"searxng","url":"http://mcp.example.lan:3000/mcp"},
+ {"name":"browser","url":"http://mcp.example.lan:8931/mcp"},
+ {"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host","alpine/socat","STDIO","TCP:mcp.example.lan:3010"],"timeout":20}]
 ```
 
-Each `args` element becomes one `--args` token (no shell splitting). `timeout` is optional.
+Entry forms:
 
-**Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only. The legacy `mem0_mcp_*` options keep working and merge the same additive way — an `mcp_servers` entry named `mem0` overrides the legacy wiring.
+- **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`searxng`, `browser` above).
+- **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout` (`openscad` above rides a docker socat bridge to a TCP-only MCP).
+- If a token URL yields nothing, the server is still added **without** an auth header and a warning lands in the add-on log — a LAN server may legitimately not need auth.
 
-Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` (and `MEM0_MCP_TOKEN`) and the rc references them as `$VARS`, so stored configs stay shareable.
+**Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
+
+Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable.
 
 ## Central config (optional)
 
@@ -239,8 +238,7 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
 | `CRUSH_REASONING_EFFORT` | Daily-model effort | `low` / `high` / `max` |
 | `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
 | `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
-| `MEM0_MCP_TOKEN` | mem0 MCP Token | Bearer for the memory MCP server |
-| `MEM0_MCP_TOKEN_URL` | mem0 MCP Token URL | URL fetching the token |
+| `MCP_SERVERS` | MCP Servers (JSON) | Same JSON array the option takes; beats the Options tab. Per-entry tokens ride inside the array (or as `MCP_TOKEN_<name>` envs as an escape hatch) |
 | `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
 | `TERM` | — | xterm-256color (set by the add-on) |
 
@@ -250,7 +248,7 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
 
    ```bash
    OLLAMA_API_KEY=...
-   MEM0_MCP_TOKEN=...
+   MCP_TOKEN_mem0=...   # escape hatch: a mem0 entry without its own token
    ```
 
    Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
@@ -296,7 +294,7 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
   so a fresh token + current permission flags are issued. Never paste a Profile-page long-lived token into
   any field — it does not work against `http://supervisor`. Note: **updating the add-on re-keys it**;
   tokens are only valid for the current install.
-- **mem0 tools error**: check the `mem0_mcp_url` is reachable from the HA host and the token is correct.
+- **mem0 tools error**: run `crush logs` / check the add-on log — a `mem0` entry in `mcp_servers` with no reachable URL or no token will say so; 401 = token wrong on the entry.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
 ## License

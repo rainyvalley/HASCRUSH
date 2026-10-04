@@ -50,7 +50,8 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 # Precedence: real environment (docker run -e / HA env) > this file > add-on
 # option > central URL > persisted file. Example lines:
 #   OLLAMA_API_KEY=sk-...
-#   MEM0_MCP_TOKEN=...
+#   MCP_TOKEN_mem0=...   (only needed if a mcp_servers "mem0" entry has no
+#                        token of its own - escape hatch, normally unused)
 #   CRUSH_CONFIG_URL=http://my-server/crushrc.template
 # Missing file = no defaults set; everything still works from options/schema.
 ENV_FILE="$PERSIST_DIR/env"
@@ -263,22 +264,12 @@ else
   [ -s "$keyfile" ] && echo "[addon][INFO] using existing persisted ollama key" \
     || echo "[addon][WARN] no ollama API key found (option, key URL, or persisted file)"
 fi
-# mem0 MCP via the legacy mem0_mcp_* options (or mcp_servers entries named
-# mem0): the token env may come from any of the option/name-specific vars set
-# below, so export each only when the generated rc actually references it.
-# Legacy fields stay additive-compatible with the mcp_servers merge.
-# ── mem0 token (legacy env back-compat) ─────────────────────────────────
-# The mem0 MCP is configured purely by the mcp_servers JSON now (an entry
-# named "mem0"). These two legacy envs still work as token sources for such
-# an entry: if the entry sets no token/token_url of its own, the merge block
-# falls back to MEM0_MCP_TOKEN (env > env-file > removed mem0_mcp_token
-# option value via the env-file) before giving up.
-MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json)}"
-MTOK_URL="${MEM0_MCP_TOKEN_URL:-$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)}"
-if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
-  MEM0_MCP_TOKEN=$(curl -fsSL --max-time 10 "$MTOK_URL" 2>/dev/null | tr -d '[:space:]')
-fi
-export MEM0_MCP_TOKEN
+# ── MCP token plumbing (all servers, incl. mem0, via mcp_servers JSON) ──
+# Every token is carried by its OWN mcp_servers entry ("token": or
+# "token_url":); resolved values are exported as MCP_TOKEN_<name> env vars
+# and the crushrc references them, so secrets never land in stored files.
+# No per-service option fields exist anymore; the old MEM0_MCP_TOKEN env is
+# no longer read.
 MCP_TOKENS_EXPORTED=0
 mcp_remove() {
   # Idempotency guard: drop any existing entry registering MCP server $1 so
@@ -321,8 +312,9 @@ mcp_remove() {
 #   http:   {"name":"vision","url":"http://host:3011/mcp","token_url":"http://host/vision-mcp.token"}
 #           token_url fetches the bearer at startup; direct "token":"..." also
 #           works; tokenless entries (browser/searxng) omit both. A "mem0"
-#           entry without own token/token_url falls back to MEM0_MCP_TOKEN
-#           (env > env-file > legacy option field) so old setups keep working.
+#           entry carries its own token/token_url like every other server;
+#           a mem0 entry with neither still gets wired but will 401 until a
+#           token lands on the entry.
 #           Omitting mem0 from the list = no memory MCP (the legacy
 #           mem0_mcp_url field no longer wires anything; scrubbed below).
 #           When the option is EMPTY/invalid, a template's own mem0 line is
@@ -357,10 +349,6 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
       MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""')
       if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
         MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
-      fi
-      if [ -z "$MCP_TOK" ] && [ "$MCP_NAME" = "mem0" ] && [ -n "$MEM0_MCP_TOKEN" ]; then
-        # legacy token plumbing for mem0: env > env-file > old option field
-        MCP_TOK="$MEM0_MCP_TOKEN"
       fi
       if [ -n "$MCP_TOK" ]; then
         MCP_TOKENS_EXPORTED=1
@@ -469,7 +457,7 @@ fi
 [ -n "$LARGE_MODEL$SMALL_MODEL$DEEP_MODEL$EFFORT" ] && echo "[addon] model defaults applied from options/env"
 
 # NOTE for crushrc users: the crushrc is BASH - it resolves OLLAMA_API_KEY and
-# MEM0_MCP_TOKEN from the environment (exported above), so the fetched central
+# MCP_TOKEN_<name> from the environment (exported above), so the fetched central
 # template keeps working without the addon knowing its internals.
 
 # ── crush sanity + version banner ──────────────────────────────────────

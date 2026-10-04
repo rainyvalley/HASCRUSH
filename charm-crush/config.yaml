@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
-version: "1.0.15"
+version: "1.0.16"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
@@ -38,13 +38,7 @@ options:
   crush_deep_model: "ollama-cloud/glm-5.3"
   crush_reasoning_effort: "high"
   ollama_key_url: ""     # optional: HTTP URL fetching OLLAMA_API_KEY=...
-  mem0_mcp_token_url: ""  # optional: HTTP URL fetching the mem0 MCP token
-  mem0_mcp_token: ""      # legacy: feeds a "mem0" entry in mcp_servers that has no own token
-  mcp_servers: ""         # ALL MCP servers incl. mem0 - optional JSON array; e.g.
-                          # [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"},
-                          #  {"name":"vision","url":"http://<host>:3011/mcp","token_url":"http://<host>/vision-mcp.token"}]
-                          # stdio form: {"name":"openscad","command":"docker","args":["..."],"timeout":20}
-                          # empty = no MCP changes (fetched template keeps its servers)
+  mcp_servers: ""         # ALL MCP servers incl. mem0 - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20}
   ollama_api_key: ""
   terminal_font_size: 14
   terminal_theme: dark
@@ -64,8 +58,6 @@ schema:
   crush_deep_model: str?
   crush_reasoning_effort: list(low|high|max)?
   ollama_key_url: str?
-  mem0_mcp_token_url: str?
-  mem0_mcp_token: str?
   mcp_servers: str?
   ollama_api_key: str?
   terminal_font_size: int(10,24)
