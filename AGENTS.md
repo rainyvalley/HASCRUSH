@@ -56,8 +56,8 @@ Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.
 3. Sourcing `/homeassistant/.crushdata/env` (optional KEY=VALUE defaults).
 4. Symlinks `/root/.config/crush` and `/root/.local/share/crush` into `/homeassistant/.crushdata/` for persistence (HA backups include `/homeassistant`).
 5. Writes/patches `/homeassistant/.crushdata/CRUSH.md` — the agent-facing guardrails file crush ingests. Marker-based injection (`<!-- hasscrush-limits-start/end -->`) so user edits survive: never rewrite this file wholesale from run.sh; edit the `LIMITS_BODY` heredoc instead.
-6. crushrc resolution: `crush_config_url` fetch (sanity-checked with grep for `provider|model add`) over a built-in fallback; the crushrc is a **bash script** that resolves `OLLAMA_API_KEY`/`MEM0_MCP_TOKEN` from the environment run.sh exports.
-7. Option overrides applied via sed: provider remap (third-party), model slots, reasoning effort, mem0 MCP line add/scrub.
+6. crushrc resolution: `crush_config_url` fetch (sanity-checked with grep for `provider|model add`) over a built-in fallback; the crushrc is a **bash script** that resolves `OLLAMA_API_KEY`/`MCP_TOKEN_<name>` from the environment run.sh exports.
+7. Option overrides applied via sed: provider remap (third-party), model slots, reasoning effort, and the `mcp_servers` JSON merge (one option wires ALL MCP servers, tokens exported as `MCP_TOKEN_<name>` env vars, referenced not inlined).
 8. Optional crush self-update (with rollback), then `exec ttyd` serving `tmux new-session -A -s crush` on port 7681 (ingress).
 
 Key precedence everywhere: **real environment > env file (/homeassistant/.crushdata/env) > Options tab > central URL > persisted file**.

@@ -54,18 +54,6 @@ configuration:
       Fetch the Ollama Cloud API key from your config server (plain OLLAMA_API_KEY=... file).
       Overrides a stale persisted key when the central copy changes. Ignored if
       the Ollama API Key option below is set directly.
-  mem0_mcp_token_url:
-    name: mem0 MCP Token URL
-    description: >-
-      URL serving the mem0 MCP bearer token (plain text). Fed to a "mem0"
-      entry in the MCP Servers JSON below when that entry has no
-      token/token_url of its own.
-  mem0_mcp_token:
-    name: mem0 MCP Token
-    description: >-
-      Bearer token for the mem0 MCP server. Fed to a "mem0" entry in the
-      MCP Servers JSON below when that entry has no token/token_url of
-      its own. Takes priority over the token URL.
   mcp_servers:
     name: MCP Servers (JSON, optional)
     description: >-
@@ -75,10 +63,10 @@ configuration:
       token_url also works; omit both for no auth header). Stdio form:
       {"name":"openscad","command":"docker","args":["run","--rm","-i",
       "--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],
-      "timeout":20}. A "mem0" entry without own token falls back to the
-      mem0 MCP Token fields above. Leave empty (or omit mem0) to disable the
-      memory MCP; empty list = template servers as-is. Entries replace only
-      their own server's line. Changes apply on add-on restart.
+      "timeout":20}. Every token belongs on its own entry - there are no
+      separate token fields anymore. Leave empty (or omit mem0) to disable
+      the memory MCP; empty list = template servers as-is. Entries replace
+      only their own server's line. Changes apply on add-on restart.
   ollama_api_key:
     name: Ollama API Key
     description: >-
