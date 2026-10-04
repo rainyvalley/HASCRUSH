@@ -275,11 +275,34 @@ fi
 export MEM0_MCP_TOKEN
 MCP_TOKENS_EXPORTED=0
 mcp_remove() {
-  # Idempotency guard: drop any existing line registering MCP server $1 so
-  # option rewrites never stack duplicates on repeated starts. Kept generic
-  # (not mem0-specific) so the mcp_servers merge below can reuse it. Names are
-  # plain identifiers, so a literal-prefix grep is enough - no sed backrefs.
-  sed -i "/^mcp add $1 /d" "$crushrc" 2>/dev/null || true
+  # Idempotency guard: drop any existing entry registering MCP server $1 so
+  # option rewrites never stack duplicates on repeated starts. Two traps this
+  # guards against:
+  #  - crushrc entries span MULTIPLE LINES (backslash continuations); deleting
+  #    only the first line orphans the continuations as junk bash and mangles
+  #    parsing ("mcp add: unknown flag network" - the orphaned --args values
+  #    ended up as stray tokens seen at the wrong loop position).
+  #  - sed backrefs: names are plain identifiers, a literal-prefix match is
+  #    enough. The loop feeds whole lines to the final sed in one invocation.
+  _mcp_rm_tmp=/tmp/mcp_remove.$$
+  : > "$_mcp_rm_tmp"
+  _mcp_in_block=0
+  while IFS= read -r _mcp_line; do
+    if [ "$_mcp_in_block" = "0" ]; then
+      case "$_mcp_line" in
+        "mcp add $1 "*|"mcp add $1") _mcp_in_block=1 ;;
+        *) printf '%s\n' "$_mcp_line" >> "$_mcp_rm_tmp" ;;
+      esac
+    else
+      # inside the block: continuation lines end with '\'; the block ends at
+      # the first line NOT ending in backslash
+      case "$_mcp_line" in
+        *'\') : ;;
+        *) _mcp_in_block=0 ;;
+      esac
+    fi
+  done < "$crushrc"
+  cat "$_mcp_rm_tmp" > "$crushrc" 2>/dev/null && rm -f "$_mcp_rm_tmp" || true
 }
 
 # mem0 MCP url: optional shared-memory layer (empty = no mem0 in crush)
@@ -350,7 +373,12 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
       _arg_idx=0
       while [ "$_arg_idx" -lt "$MCP_NARGS" ]; do
         # one --args token per element: crush exec's argv directly, no shell
-        # splitting - values may contain spaces/slashes safely
+        # splitting - values may contain spaces/slashes safely. SPACE form is
+        # required: crush's shell-config flag engine (internal/shellconfig/
+        # flags.go, stable v0.88->main) only matches the exact token --args;
+        # the =-form dies with "mcp add: unknown flag --args=...". Dash-prefixed
+        # values (--network, --rm) are consumed verbatim by nextArg, no quoting
+        # needed.
         MCP_ARGS_LINE="$MCP_ARGS_LINE --args $(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]")"
         _arg_idx=$((_arg_idx + 1))
       done
