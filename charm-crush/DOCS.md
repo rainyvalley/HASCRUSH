@@ -55,6 +55,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `mem0_mcp_url` / `mem0_mcp_token` / `mem0_mcp_token_url` | *(empty)* | Shared memory layer (see Memory section); url empty = off |
+| `mcp_servers` | *(empty)* | Any additional MCP servers as one JSON array (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -128,6 +129,31 @@ memory_history(memory_id="<id from search>")
 `user_id` matters: it's the memory space. Use the **same id in every client** (Open WebUI filter's `user_id_field=email` + crushrc defaults) and everything shares one brain.
 
 **Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token (+ this add-on's `mem0_mcp_token`) per install. See the wrapper's README security notes.
+
+## MCP servers (vision, searxng, openscad, ...)
+
+Any MCP server can be wired from the Options tab via `mcp_servers` — one JSON array, each entry one server. Entries **replace only their own server's line**; a central template's other `mcp add` lines stay untouched. Empty = template servers as-is. Applies on add-on restart.
+
+**HTTP server** (with token fetched at startup):
+
+```json
+[{"name":"vision","url":"http://192.0.2.10:3011/mcp","token_url":"http://192.0.2.10:8887/vision-mcp.token"}]
+```
+
+- `"token":"..."` instead of `token_url` pastes the bearer directly; omit both for servers without auth (e.g. `searxng`: `[{"name":"searxng","url":"http://192.0.2.10:3000/mcp"}]`).
+- If the token URL yields nothing, the server is still added **without** an auth header and a warning lands in the add-on log — a LAN server may legitimately not need auth.
+
+**stdio server** (openscad rides a docker socat bridge to a TCP-only MCP):
+
+```json
+[{"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],"timeout":20}]
+```
+
+Each `args` element becomes one `--args` token (no shell splitting). `timeout` is optional.
+
+**Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only. The legacy `mem0_mcp_*` options keep working and merge the same additive way — an `mcp_servers` entry named `mem0` overrides the legacy wiring.
+
+Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` (and `MEM0_MCP_TOKEN`) and the rc references them as `$VARS`, so stored configs stay shareable.
 
 ## Central config (optional)
 

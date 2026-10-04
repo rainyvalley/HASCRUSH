@@ -55,6 +55,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `mem0_mcp_url` / `mem0_mcp_token` / `mem0_mcp_token_url` | *(empty)* | Shared memory layer (see Memory section); url empty = off |
+| `mcp_servers` | *(empty)* | Any additional MCP servers as one JSON array (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -185,6 +186,7 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
 | `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
 | `MEM0_MCP_TOKEN` | mem0 MCP Token | Bearer for the memory MCP server |
 | `MEM0_MCP_TOKEN_URL` | mem0 MCP Token URL | URL fetching the token |
+| `MCP_SERVERS` | MCP Servers (JSON) | Same JSON array the option takes; beats the Options tab |
 | `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
 | `TERM` | — | xterm-256color (set by the add-on) |
 

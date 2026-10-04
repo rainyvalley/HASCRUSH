@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — GLM models via your own Ollama (local + cloud), with the shared mem0 memory layer
-version: "1.0.12"
+version: "1.0.13"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
@@ -41,6 +41,9 @@ options:
   mem0_mcp_url: ""        # optional: e.g. http://<host>:8300/mcp
   mem0_mcp_token_url: ""  # optional: HTTP URL fetching the mem0 MCP token
   mem0_mcp_token: ""
+  mcp_servers: ""         # optional JSON array of MCP servers; e.g.
+                          # [{"name":"vision","url":"http://<host>:3011/mcp","token_url":"http://<host>/vision-mcp.token"}]
+                          # stdio form: {"name":"openscad","command":"docker","args":["..."],"timeout":20}
   ollama_api_key: ""
   terminal_font_size: 14
   terminal_theme: dark
@@ -63,6 +66,7 @@ schema:
   mem0_mcp_url: str?
   mem0_mcp_token_url: str?
   mem0_mcp_token: str?
+  mcp_servers: str?
   ollama_api_key: str?
   terminal_font_size: int(10,24)
   terminal_theme: list(dark|light)
