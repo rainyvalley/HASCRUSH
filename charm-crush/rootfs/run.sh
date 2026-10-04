@@ -307,6 +307,40 @@ mcp_remove() {
   cat "$_mcp_rm_tmp" > "$crushrc" 2>/dev/null && rm -f "$_mcp_rm_tmp" || true
 }
 
+mcp_sanitize() {
+  # One-time repair for rcs damaged by pre-1.0.14 single-line deletes: those
+  # removed only the HEAD line ("mcp add openscad --type stdio") of a
+  # backslash-continued entry, orphaning the continuation lines in the
+  # persisted crushrc. On the next start those orphans execute as bare
+  # "--args/--command/..." tokens (mangled into failures like
+  # "mcp add: unknown flag network"). Drop any flag-headed continuation
+  # lines that have NO mcp-add head before/after them.
+  _mcp_sz_tmp=/tmp/mcp_sanitize.$$
+  : > "$_mcp_sz_tmp"
+  _mcp_sz_prev_head=0
+  while IFS= read -r _mcp_line; do
+    case "$_mcp_line" in
+      "mcp add "*)
+        _mcp_sz_open=1
+        printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
+        ;;
+      [[:space:]]*"--args "*|[[:space:]]*"--command "*|[[:space:]]*"--timeout "*|\
+[[:space:]]*"--header "*|[[:space:]]*"--url "*|[[:space:]]*"--env "*)
+        if [ "$_mcp_sz_open" = "1" ]; then
+          printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
+        else
+          echo "[addon][INFO] removed orphaned mcp flag fragment: $_mcp_line"
+        fi
+        ;;
+      *)
+        _mcp_sz_open=0
+        printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
+        ;;
+    esac
+  done < "$crushrc"
+  cat "$_mcp_sz_tmp" > "$crushrc" 2>/dev/null && rm -f "$_mcp_sz_tmp" || true
+}
+
 # ── mcp_servers option: ALL MCP servers, from the Options tab ────────────
 # mem0 included (since 1.0.15): one JSON array, each entry one server:
 #   http:   {"name":"vision","url":"http://host:3011/mcp","token_url":"http://host/vision-mcp.token"}
@@ -327,6 +361,7 @@ mcp_remove() {
 # Empty/unset or INVALID JSON = no changes; template lines stay authoritative
 # - including a template's mem0 line, for crush_config_url users.
 MCP_JSON="${MCP_SERVERS:-$(jq -r '.mcp_servers // "[]"' /data/options.json 2>/dev/null)}"
+mcp_sanitize
 if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
   MCP_COUNT=$(echo "$MCP_JSON" | jq 'length')
   _mcp_idx=0
