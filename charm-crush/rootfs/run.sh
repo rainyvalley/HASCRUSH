@@ -392,9 +392,9 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
   while [ "$_mcp_idx" -lt "$MCP_COUNT" ]; do
     MCP_ENTRY=$(echo "$MCP_JSON" | jq -c ".[$_mcp_idx]")
     _mcp_idx=$((_mcp_idx + 1))
-    MCP_NAME=$(echo "$MCP_ENTRY" | jq -r '.name // ""')
-    MCP_URL=$(echo "$MCP_ENTRY" | jq -r '.url // ""')
-    MCP_CMD=$(echo "$MCP_ENTRY" | jq -r '.command // ""')
+    MCP_NAME=$(echo "$MCP_ENTRY" | jq -r '.name // ""' | tr -d '\r\n ')
+    MCP_URL=$(echo "$MCP_ENTRY" | jq -r '.url // ""' | tr -d '\r\n')
+    MCP_CMD=$(echo "$MCP_ENTRY" | jq -r '.command // ""' | tr -d '\r\n')
     if [ -z "$MCP_NAME" ]; then
       echo "[addon][WARN] mcp_servers entry #$_mcp_idx has no name - skipped"
       continue
@@ -404,8 +404,8 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
     esac
     mcp_remove "$MCP_NAME"
     if [ -n "$MCP_URL" ]; then
-      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""')
-      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""')
+      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
+      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
       if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
         MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
       fi
@@ -437,7 +437,7 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
         MCP_ARGS_LINE="$MCP_ARGS_LINE --args $_mcp_arg"
         _arg_idx=$((_arg_idx + 1))
       done
-      MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""')
+      MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""' | tr -d '\r\n[:space:]')
       if [ -n "$MCP_TIMEOUT" ]; then
         printf 'mcp add %s --type stdio --command "%s"%s --timeout %s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" "$MCP_TIMEOUT" >> "$crushrc"
       else
@@ -448,6 +448,11 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
     fi
   done
   echo "[addon] mcp_servers: $MCP_COUNT server(s) applied from options"
+  # belt-and-braces: the merge runs AFTER the pre-merge sanitize, so any
+  # half-line it could emit (a newline surviving the strips above would
+  # split tokens - "unknown flag 252:3010") lands in the rc unrepaired.
+  # Re-sanitize the rc we just wrote.
+  mcp_sanitize
 elif [ "$MCP_JSON" != "[]" ]; then
   echo "[addon][WARN] mcp_servers is not a valid JSON array - ignored (template mcp lines unchanged)"
 fi
