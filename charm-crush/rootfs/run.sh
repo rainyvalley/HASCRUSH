@@ -271,6 +271,7 @@ fi
 # No per-service option fields exist anymore; the old MEM0_MCP_TOKEN env is
 # no longer read.
 MCP_TOKENS_EXPORTED=0
+CR=$(printf '\r')
 mcp_remove() {
   # Idempotency guard: drop any existing entry registering MCP server $1 so
   # option rewrites never stack duplicates on repeated starts. Two traps this
@@ -288,6 +289,8 @@ mcp_remove() {
   # exactly then; the swallow state continues only past lines ending in '\'.
   _mcp_swallow=0
   while IFS= read -r _mcp_line; do
+    # tolerate CRLF and trailing whitespace after a continuation backslash
+    _mcp_line="${_mcp_line%$CR}"; _mcp_line="${_mcp_line%%[[:space:]]}"
     if [ "$_mcp_swallow" = "0" ]; then
       case "$_mcp_line" in
         "mcp add $1 "*|"mcp add $1")
@@ -311,34 +314,55 @@ mcp_sanitize() {
   # One-time repair for rcs damaged by pre-1.0.14 single-line deletes: those
   # removed only the HEAD line ("mcp add openscad --type stdio") of a
   # backslash-continued entry, orphaning the continuation lines in the
-  # persisted crushrc. On the next start those orphans execute as bare
-  # "--args/--command/..." tokens (mangled into failures like
-  # "mcp add: unknown flag network"). Drop any flag-headed continuation
-  # lines that have NO mcp-add head before/after them.
+  # persisted crushrc (failures like "mcp add: unknown flag network" /
+  # "unknown flag 168.1.252:3010"- the token got split mid-word). Also
+  # repairs editor-wrapped tokens inside an entry: while an mcp add chain is
+  # open, the next line (even a bare value like "168.1.252:3010") JOINS the
+  # previous line seamlessly - reproducing the original unbroken token.
   _mcp_sz_tmp=/tmp/mcp_sanitize.$$
   : > "$_mcp_sz_tmp"
-  _mcp_sz_prev_head=0
+  # open=1 while inside an mcp add entry chain; prev_bs=1 when the previous
+  # line ended with a continuation backslash
+  _mcp_sz_open=0
+  _mcp_sz_prev_bs=0
   while IFS= read -r _mcp_line; do
+    # tolerate '\r' (CRLF-persisted rcs) before matching
+    _mcp_line="${_mcp_line%$CR}"
     case "$_mcp_line" in
       "mcp add "*)
         _mcp_sz_open=1
+        _mcp_sz_prev_bs=0
         printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
         ;;
       [[:space:]]*"--args "*|[[:space:]]*"--command "*|[[:space:]]*"--timeout "*|\
 [[:space:]]*"--header "*|[[:space:]]*"--url "*|[[:space:]]*"--env "*)
+        # mcp-exclusive flag fragment: kept ONLY while an mcp add chain is
+        # open (normal multi-line entry); with NO open head it is an orphan
+        # from a pre-1.0.14 single-line delete -> drop it
         if [ "$_mcp_sz_open" = "1" ]; then
           printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
         else
           echo "[addon][INFO] removed orphaned mcp flag fragment: $_mcp_line"
-        fi
-        ;;
+        fi ;;
       *)
-        _mcp_sz_open=0
-        printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
-        ;;
+        if [ "$_mcp_sz_open" = "1" ] && [ "$_mcp_sz_prev_bs" = "1" ]; then
+          # continuation line: join onto the previous kept line (the
+          # previous backslash was a seamless wrap - e.g. a token split
+          # mid-word like "TCP:192." / "168.1.252:3010")
+          _mcp_sz_last=$(tail -1 "$_mcp_sz_tmp" | sed 's/[[:space:]]*\\$//')
+          sed -i '$d' "$_mcp_sz_tmp"
+          printf '%s%s\n' "$_mcp_sz_last" "$_mcp_line" >> "$_mcp_sz_tmp"
+        else
+          _mcp_sz_open=0
+          printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
+        fi ;;
+    esac
+    case "$(printf '%s' "$_mcp_line" | sed 's/[[:space:]]*$//')" in
+      *'\') _mcp_sz_prev_bs=1 ;;
+      *) _mcp_sz_prev_bs=0 ;;
     esac
   done < "$crushrc"
-  cat "$_mcp_sz_tmp" > "$crushrc" 2>/dev/null && rm -f "$_mcp_sz_tmp" || true
+  mv "$_mcp_sz_tmp" "$crushrc" 2>/dev/null || true
 }
 
 # ── mcp_servers option: ALL MCP servers, from the Options tab ────────────
@@ -407,7 +431,10 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
         # the =-form dies with "mcp add: unknown flag --args=...". Dash-prefixed
         # values (--network, --rm) are consumed verbatim by nextArg, no quoting
         # needed.
-        MCP_ARGS_LINE="$MCP_ARGS_LINE --args $(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]")"
+        # a paste with an editor line-wrap can embed raw \n/\r inside a
+        # value; strip them so the generated rc line never breaks mid-token
+        _mcp_arg=$(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]" | tr -d '\r\n')
+        MCP_ARGS_LINE="$MCP_ARGS_LINE --args $_mcp_arg"
         _arg_idx=$((_arg_idx + 1))
       done
       MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""')
