@@ -267,6 +267,12 @@ fi
 # mem0): the token env may come from any of the option/name-specific vars set
 # below, so export each only when the generated rc actually references it.
 # Legacy fields stay additive-compatible with the mcp_servers merge.
+# ── mem0 token (legacy env back-compat) ─────────────────────────────────
+# The mem0 MCP is configured purely by the mcp_servers JSON now (an entry
+# named "mem0"). These two legacy envs still work as token sources for such
+# an entry: if the entry sets no token/token_url of its own, the merge block
+# falls back to MEM0_MCP_TOKEN (env > env-file > removed mem0_mcp_token
+# option value via the env-file) before giving up.
 MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json)}"
 MTOK_URL="${MEM0_MCP_TOKEN_URL:-$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)}"
 if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
@@ -286,53 +292,48 @@ mcp_remove() {
   #    enough. The loop feeds whole lines to the final sed in one invocation.
   _mcp_rm_tmp=/tmp/mcp_remove.$$
   : > "$_mcp_rm_tmp"
-  _mcp_in_block=0
+  # swallow=1 while consuming the matched entry's continuation lines; it
+  # means "the PREVIOUS line was part of the entry", so a line is swallowed
+  # exactly then; the swallow state continues only past lines ending in '\'.
+  _mcp_swallow=0
   while IFS= read -r _mcp_line; do
-    if [ "$_mcp_in_block" = "0" ]; then
+    if [ "$_mcp_swallow" = "0" ]; then
       case "$_mcp_line" in
-        "mcp add $1 "*|"mcp add $1") _mcp_in_block=1 ;;
+        "mcp add $1 "*|"mcp add $1")
+          # first line of the entry: swallow it; continue swallowing while
+          # it ends with backslash (multi-line entry)
+          case "$_mcp_line" in *'\') _mcp_swallow=1 ;; *) _mcp_swallow=0 ;; esac
+          ;;
         *) printf '%s\n' "$_mcp_line" >> "$_mcp_rm_tmp" ;;
       esac
     else
-      # inside the block: continuation lines end with '\'; the block ends at
-      # the first line NOT ending in backslash
       case "$_mcp_line" in
-        *'\') : ;;
-        *) _mcp_in_block=0 ;;
+        *'\') : ;;                       # pure continuation: swallow
+        *) _mcp_swallow=0 ;;             # entry terminator: swallow, done
       esac
     fi
   done < "$crushrc"
   cat "$_mcp_rm_tmp" > "$crushrc" 2>/dev/null && rm -f "$_mcp_rm_tmp" || true
 }
 
-# mem0 MCP url: optional shared-memory layer (empty = no mem0 in crush)
-# - unset url           : scrub any mem0 line (operator turned memory OFF)
-# - url but no token    : skip mem0 (would 401 forever) + warn
-# - url and token       : rewrite/append the mcp add mem0 line with both
-MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
-if [ -z "$MEM0_URL" ]; then
-  mcp_remove mem0
-elif [ -z "$MEM0_MCP_TOKEN" ]; then
-  echo "[addon][WARN] mem0_mcp_url set but no token found - mem0 MCP skipped"
-  mcp_remove mem0
-else
-  mcp_remove mem0
-  # the token is passed as an env reference, NOT inlined - it may contain
-  # characters sed would eat, and it must not land in stored files
-  printf 'mcp add mem0 --type http --url "%s" --header Authorization "Bearer $MEM0_MCP_TOKEN"\n' "$MEM0_URL" >> "$crushrc"
-  MCP_TOKENS_EXPORTED=1
-fi
-
-# ── mcp_servers option: configure ANY MCP server from the Options tab ────
-# JSON array, each entry one server. Two shapes (like the mem0 handling above):
+# ── mcp_servers option: ALL MCP servers, from the Options tab ────────────
+# mem0 included (since 1.0.15): one JSON array, each entry one server:
 #   http:   {"name":"vision","url":"http://host:3011/mcp","token_url":"http://host/vision-mcp.token"}
 #           token_url fetches the bearer at startup; direct "token":"..." also
-#           works. Omitting both adds the server without an auth header.
+#           works; tokenless entries (browser/searxng) omit both. A "mem0"
+#           entry without own token/token_url falls back to MEM0_MCP_TOKEN
+#           (env > env-file > legacy option field) so old setups keep working.
+#           Omitting mem0 from the list = no memory MCP (the legacy
+#           mem0_mcp_url field no longer wires anything; scrubbed below).
+#           When the option is EMPTY/invalid, a template's own mem0 line is
+#           left in place (crush_config_url users keep their template's
+#           memory wiring). The fallback rc never had one.
 #   stdio:  {"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host",
 #            "alpine/socat","STDIO","TCP:host:3010"],"timeout":20}
 # Merge is additive by name: entries replace only their own server's line
 # (mcp_remove above), never other servers a central template registers.
-# Empty/unset or INVALID JSON = no changes; template lines stay authoritative.
+# Empty/unset or INVALID JSON = no changes; template lines stay authoritative
+# - including a template's mem0 line, for crush_config_url users.
 MCP_JSON="${MCP_SERVERS:-$(jq -r '.mcp_servers // "[]"' /data/options.json 2>/dev/null)}"
 if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
   MCP_COUNT=$(echo "$MCP_JSON" | jq 'length')
@@ -356,6 +357,10 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
       MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""')
       if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
         MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+      fi
+      if [ -z "$MCP_TOK" ] && [ "$MCP_NAME" = "mem0" ] && [ -n "$MEM0_MCP_TOKEN" ]; then
+        # legacy token plumbing for mem0: env > env-file > old option field
+        MCP_TOK="$MEM0_MCP_TOKEN"
       fi
       if [ -n "$MCP_TOK" ]; then
         MCP_TOKENS_EXPORTED=1
@@ -396,6 +401,23 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
 elif [ "$MCP_JSON" != "[]" ]; then
   echo "[addon][WARN] mcp_servers is not a valid JSON array - ignored (template mcp lines unchanged)"
 fi
+# mem0_mcp_url (pre-1.0.15 way to point at the memory MCP) no longer wires
+# anything: an operator who had ONLY mem0_url set and empty mcp_servers must
+# move to a mem0 entry in mcp_servers; clear any stale line so an old
+# install can't keep a half-configured memory MCP - but only when the
+# mcp_servers JSON did NOT just wire a fresh mem0 entry (that entry wins;
+# scrubbing here would delete the new line, see 1.0.15 sim test).
+LEGACY_MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
+MCP_HAS_MEM0=0
+if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  # jq -e alone exits 0 on an empty stream, so grep the output instead
+  echo "$MCP_JSON" | jq -c '.[] | select(.name == "mem0")' 2>/dev/null | grep -q . && MCP_HAS_MEM0=1
+fi
+if [ -n "$LEGACY_MEM0_URL" ] && [ "$MCP_HAS_MEM0" != "1" ]; then
+  echo "[addon][NOTICE] mem0_mcp_url option is retired - add a \"mem0\" entry to the mcp_servers JSON (url + token_url/token); removing any stale mem0 line"
+  mcp_remove mem0
+fi
+unset LEGACY_MEM0_URL MCP_HAS_MEM0
 # Tokens referenced by generated mcp lines ride the environment into crush's
 # runtime (with S6_KEEP_ENV=1 they survive s6 exec); the crushrc only carries
 # $VAR references, so secret values never land in stored files.
