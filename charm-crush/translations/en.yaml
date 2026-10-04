@@ -68,6 +68,18 @@ configuration:
     name: mem0 MCP Token
     description: >-
       Bearer token for the mem0 MCP server. Takes priority over the token URL.
+  mcp_servers:
+    name: MCP Servers (JSON, optional)
+    description: >-
+      Configure any MCP servers beyond mem0 - vision, searxng, openscad, etc.
+      One JSON array; each entry is one server. HTTP form: {"name":"vision",
+      "url":"http://192.0.2.10:3011/mcp","token_url":"http://192.0.2.10/vision-mcp.token"}
+      ("token" instead of token_url also works; omit both for no auth header).
+      Stdio form: {"name":"openscad","command":"docker","args":["run","--rm",
+      "-i","--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],
+      "timeout":20}. Entries replace only their own server's line - other
+      servers from a central template stay. Leave empty to use the template's
+      servers as-is. Changes apply on add-on restart.
   ollama_api_key:
     name: Ollama API Key
     description: >-

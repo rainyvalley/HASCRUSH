@@ -263,13 +263,24 @@ else
   [ -s "$keyfile" ] && echo "[addon][INFO] using existing persisted ollama key" \
     || echo "[addon][WARN] no ollama API key found (option, key URL, or persisted file)"
 fi
-# mem0 token: option -> token URL (no key file needed; it is passed via the crushrc below)
+# mem0 MCP via the legacy mem0_mcp_* options (or mcp_servers entries named
+# mem0): the token env may come from any of the option/name-specific vars set
+# below, so export each only when the generated rc actually references it.
+# Legacy fields stay additive-compatible with the mcp_servers merge.
 MEM0_MCP_TOKEN="${MEM0_MCP_TOKEN:-$(jq -r '.mem0_mcp_token // ""' /data/options.json)}"
 MTOK_URL="${MEM0_MCP_TOKEN_URL:-$(jq -r '.mem0_mcp_token_url // ""' /data/options.json)}"
 if [ -z "$MEM0_MCP_TOKEN" ] && [ -n "$MTOK_URL" ]; then
   MEM0_MCP_TOKEN=$(curl -fsSL --max-time 10 "$MTOK_URL" 2>/dev/null | tr -d '[:space:]')
 fi
 export MEM0_MCP_TOKEN
+MCP_TOKENS_EXPORTED=0
+mcp_remove() {
+  # Idempotency guard: drop any existing line registering MCP server $1 so
+  # option rewrites never stack duplicates on repeated starts. Kept generic
+  # (not mem0-specific) so the mcp_servers merge below can reuse it. Names are
+  # plain identifiers, so a literal-prefix grep is enough - no sed backrefs.
+  sed -i "/^mcp add $1 /d" "$crushrc" 2>/dev/null || true
+}
 
 # mem0 MCP url: optional shared-memory layer (empty = no mem0 in crush)
 # - unset url           : scrub any mem0 line (operator turned memory OFF)
@@ -277,17 +288,89 @@ export MEM0_MCP_TOKEN
 # - url and token       : rewrite/append the mcp add mem0 line with both
 MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
 if [ -z "$MEM0_URL" ]; then
-  sed -i '/mcp add mem0 /d' "$crushrc" 2>/dev/null || true
+  mcp_remove mem0
 elif [ -z "$MEM0_MCP_TOKEN" ]; then
   echo "[addon][WARN] mem0_mcp_url set but no token found - mem0 MCP skipped"
-  sed -i '/mcp add mem0 /d' "$crushrc" 2>/dev/null || true
+  mcp_remove mem0
 else
-  if grep -q "mcp add mem0" "$crushrc" 2>/dev/null; then
-    sed -i "s#mcp add mem0 .*#mcp add mem0 --type http --url \"$MEM0_URL\" --header Authorization \"Bearer \$MEM0_MCP_TOKEN\"#" "$crushrc"
-  else
-    printf '\nmcp add mem0 --type http --url "%s" --header Authorization "Bearer $MEM0_MCP_TOKEN"\n' "$MEM0_URL" >> "$crushrc"
-  fi
+  mcp_remove mem0
+  # the token is passed as an env reference, NOT inlined - it may contain
+  # characters sed would eat, and it must not land in stored files
+  printf 'mcp add mem0 --type http --url "%s" --header Authorization "Bearer $MEM0_MCP_TOKEN"\n' "$MEM0_URL" >> "$crushrc"
+  MCP_TOKENS_EXPORTED=1
 fi
+
+# ── mcp_servers option: configure ANY MCP server from the Options tab ────
+# JSON array, each entry one server. Two shapes (like the mem0 handling above):
+#   http:   {"name":"vision","url":"http://host:3011/mcp","token_url":"http://host/vision-mcp.token"}
+#           token_url fetches the bearer at startup; direct "token":"..." also
+#           works. Omitting both adds the server without an auth header.
+#   stdio:  {"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host",
+#            "alpine/socat","STDIO","TCP:host:3010"],"timeout":20}
+# Merge is additive by name: entries replace only their own server's line
+# (mcp_remove above), never other servers a central template registers.
+# Empty/unset or INVALID JSON = no changes; template lines stay authoritative.
+MCP_JSON="${MCP_SERVERS:-$(jq -r '.mcp_servers // "[]"' /data/options.json 2>/dev/null)}"
+if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  MCP_COUNT=$(echo "$MCP_JSON" | jq 'length')
+  _mcp_idx=0
+  while [ "$_mcp_idx" -lt "$MCP_COUNT" ]; do
+    MCP_ENTRY=$(echo "$MCP_JSON" | jq -c ".[$_mcp_idx]")
+    _mcp_idx=$((_mcp_idx + 1))
+    MCP_NAME=$(echo "$MCP_ENTRY" | jq -r '.name // ""')
+    MCP_URL=$(echo "$MCP_ENTRY" | jq -r '.url // ""')
+    MCP_CMD=$(echo "$MCP_ENTRY" | jq -r '.command // ""')
+    if [ -z "$MCP_NAME" ]; then
+      echo "[addon][WARN] mcp_servers entry #$_mcp_idx has no name - skipped"
+      continue
+    fi
+    case "$MCP_NAME" in
+      *[!A-Za-z0-9_-]*) echo "[addon][WARN] mcp_servers: '$MCP_NAME' not a safe name - skipped"; continue ;;
+    esac
+    mcp_remove "$MCP_NAME"
+    if [ -n "$MCP_URL" ]; then
+      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""')
+      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""')
+      if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
+        MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+      fi
+      if [ -n "$MCP_TOK" ]; then
+        MCP_TOKENS_EXPORTED=1
+        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
+        printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $MCP_TOKEN_%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_NAME" >> "$crushrc"
+      else
+        # no token resolves: still wire the server (LAN servers may not need
+        # auth) - same posture as mem0's token fetch failure
+        printf 'mcp add %s --type http --url "%s"\n' "$MCP_NAME" "$MCP_URL" >> "$crushrc"
+        [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added without auth header"
+      fi
+    elif [ -n "$MCP_CMD" ]; then
+      MCP_ARGS_LINE=""
+      MCP_NARGS=$(echo "$MCP_ENTRY" | jq '.args // [] | length')
+      _arg_idx=0
+      while [ "$_arg_idx" -lt "$MCP_NARGS" ]; do
+        # one --args token per element: crush exec's argv directly, no shell
+        # splitting - values may contain spaces/slashes safely
+        MCP_ARGS_LINE="$MCP_ARGS_LINE --args $(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]")"
+        _arg_idx=$((_arg_idx + 1))
+      done
+      MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""')
+      if [ -n "$MCP_TIMEOUT" ]; then
+        printf 'mcp add %s --type stdio --command "%s"%s --timeout %s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" "$MCP_TIMEOUT" >> "$crushrc"
+      else
+        printf 'mcp add %s --type stdio --command "%s"%s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" >> "$crushrc"
+      fi
+    else
+      echo "[addon][WARN] mcp_servers '$MCP_NAME': neither url nor command set - skipped"
+    fi
+  done
+  echo "[addon] mcp_servers: $MCP_COUNT server(s) applied from options"
+elif [ "$MCP_JSON" != "[]" ]; then
+  echo "[addon][WARN] mcp_servers is not a valid JSON array - ignored (template mcp lines unchanged)"
+fi
+# Tokens referenced by generated mcp lines ride the environment into crush's
+# runtime (with S6_KEEP_ENV=1 they survive s6 exec); the crushrc only carries
+# $VAR references, so secret values never land in stored files.
 
 # ── Model defaults from options/env (apply to fetched or fallback rc) ──
 # CRUSH_LARGE_MODEL / CRUSH_SMALL_MODEL / CRUSH_DEEP_MODEL / CRUSH_REASONING_EFFORT envs or the
