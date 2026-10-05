@@ -202,6 +202,11 @@ install/update and the permission flags are fixed at build time. If you see
 the add-on** (so a fresh token gets issued and current permission flags land), not to
 fill in a field.
 
+Add-on releases since **1.0.20** also recover the token when s6-overlay stripped the
+container environment: startup resolves `SUPERVISOR_TOKEN` from the real environment,
+the legacy `HASSIO_TOKEN` alias, and the s6 `container_environment` dump (in that
+order), then re-exports it under both names for the `ha` CLI and crush sessions.
+
 **Denials that are normal (do not "fix" them)** - these are the attempts that are
 supposed to be denied:
 
@@ -215,7 +220,8 @@ supposed to be denied:
 
 At every add-on start, `run.sh` also self-checks both endpoints (`http://supervisor/info`
 and `http://supervisor/core/api/`) and prints an OK or `DENIED <code>` line with the
-cause to the add-on log.
+cause to the add-on log. When the token itself could not be resolved at all, the log
+shows a `SUPERVISOR_TOKEN missing` warning instead (see Troubleshooting).
 
 The agent-facing version of these rules ships as the default `CRUSH.md`
 (in `/homeassistant/.crushdata/`): a **Hard Limits** block that Crush ingests on
@@ -288,12 +294,17 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **Supervisor API `401` / `403` denials**: there is deliberately **no field to add a Supervisor API key** —
   the Supervisor injects `SUPERVISOR_TOKEN` itself, and `config.yaml`'s `homeassistant_api` / `hassio_api` /
   `hassio_role: manager` flags grant its reach (see *Where the Supervisor API key comes from* above).
-  If the startup self-check in the add-on log shows `Supervisor API: OK` lines, the key is fine and any
-  remaining denials are the *expected* ones (hassio paths, `supervisor.*` websocket commands, docker,
-  admin-only endpoints). If the self-check shows `DENIED 401`/`DENIED 403`, update or reinstall the add-on
-  so a fresh token + current permission flags are issued. Never paste a Profile-page long-lived token into
-  any field — it does not work against `http://supervisor`. Note: **updating the add-on re-keys it**;
-  tokens are only valid for the current install.
+  Distinguish the two failure modes in the startup self-check lines of the add-on log:
+  - `SUPERVISOR_TOKEN missing` (present before 1.0.20; the s6 base stripped the container env before
+    startup could read it): **update the add-on** — 1.0.20+ keeps the environment intact and recovers
+    the token from the s6 dump.
+  - `token DENIED 401` / `access DENIED 403` (token present but rejected): if the self-check shows
+    `Supervisor API: OK` lines, the key is fine and any remaining denials are the *expected* ones
+    (hassio paths, `supervisor.*` websocket commands, docker, admin-only endpoints); otherwise update
+    or reinstall the add-on so a fresh token + current permission flags are issued.
+  Never paste a Profile-page long-lived token into any field — it does not work against
+  `http://supervisor`. Note: **updating the add-on re-keys it**; tokens are only valid for the current
+  install.
 - **mem0 tools error**: run `crush logs` / check the add-on log — a `mem0` entry in `mcp_servers` with no reachable URL or no token will say so; 401 = token wrong on the entry.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 

@@ -8,10 +8,16 @@ LABEL org.opencontainers.image.description="Charm Crush CLI with web terminal, y
 LABEL org.opencontainers.image.source="https://github.com/rainyvalley/HASSCharm"
 LABEL org.opencontainers.image.licenses="MIT"
 
+# S6_KEEP_ENV=1 must be set at image level: s6-overlay stage0 reads it BEFORE
+# any user code runs, and without it the container environment (including the
+# Supervisor-injected SUPERVISOR_TOKEN, which the ha CLI reads by literal name)
+# is stripped before run.sh starts. run.sh re-exports it too (harmless there)
+# and additionally recovers the token from the s6 envdir as a fallback.
 ENV \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    TERM=xterm-256color
+    TERM=xterm-256color \
+    S6_KEEP_ENV=1
 
 # System dependencies (ttyd installed separately as a static binary below;
 # gnupg + ca-certificates are needed by the charm apt-repo bootstrap on debian
