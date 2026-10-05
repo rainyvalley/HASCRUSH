@@ -9,7 +9,7 @@ charm-crush/
   config.yaml      # add-on manifest: options + schema + security flags (version bumps here)
   build.yaml       # build image (HA base 3.21) + OCI labels
   Dockerfile       # alpine-based image: ttyd static binary + crush from GH releases + ha CLI
-  rootfs/run.sh    # ALL startup logic (388 lines: fetch config, keys, persistence, tmux+ttyd)
+  rootfs/run.sh    # ALL startup logic (fetch config, keys, supervisor-token recovery, persistence, tmux+ttyd)
   rootfs/root/     # .bashrc / .tmux.conf copied into the image
   translations/en.yaml  # Options-tab labels — CI asserts EVERY option has an entry
   DOCS.md          # Documentation-tab content (mirrors README)
@@ -51,7 +51,7 @@ Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.
 
 `s6-overlay` (pid 1, from the HA base image) runs `rootfs/run.sh` which, in order:
 
-1. Re-exports `HOME`/`USER`/`SHELL` and `S6_KEEP_ENV=1` — s6 strips the env by default; without this crush aborts with "Failed to get user home directory".
+1. Re-exports `HOME`/`USER`/`SHELL` and `S6_KEEP_ENV=1`. The authoritative `S6_KEEP_ENV=1` lives in the Dockerfile ENV (s6 stage0 reads it before any user code — with it unset, stage0 strips the container env and the Supervisor-injected `SUPERVISOR_TOKEN` never reaches run.sh). run.sh additionally resolves the token from the real env → legacy `HASSIO_TOKEN` → s6 `container_environment` envdirs, and re-exports it as `SUPERVISOR_TOKEN` (the `ha` CLI reads that literal name) plus `HA_TOKEN`.
 2. Supervisor-API self-check: `SUPERVISOR_TOKEN` (injected by HA, never user-set) is re-exported as `HA_TOKEN`; two probe calls print OK/denied into the add-on log.
 3. Sourcing `/homeassistant/.crushdata/env` (optional KEY=VALUE defaults).
 4. Symlinks `/root/.config/crush` and `/root/.local/share/crush` into `/homeassistant/.crushdata/` for persistence (HA backups include `/homeassistant`).

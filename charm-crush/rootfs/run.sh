@@ -2,10 +2,45 @@
 # Crush add-on startup: config fetch + key resolution + persistence + ttyd.
 set -e
 
-# Tell s6-overlay to keep the container environment (it strips it by default)
+# Tell s6-overlay to keep the container environment (it strips it by default).
+# The authoritative copy is the Dockerfile ENV (stage0 reads it before any user
+# code runs); this re-export is belt-and-braces for non-image executions.
 export S6_KEEP_ENV=1
 
-HA_TOKEN="${SUPERVISOR_TOKEN:-}"; export HA_TOKEN
+# ── Supervisor token resolution ───────────────────────────────────────────
+# resolve_supervisor_token: SUPERVISOR_TOKEN is injected into the container env
+# by the Supervisor itself. s6-overlay (pid 1) strips the container env before
+# run.sh starts when S6_KEEP_ENV is unset at stage0 time; with the Dockerfile
+# setting S6_KEEP_ENV=1 the env survives intact, and this chain additionally
+# recovers the token from the s6 env dumps for images/runs where it did not:
+# `/run/s6/container_environment` (stage0's dump when KEEP_ENV is off) and
+# `/run/s6/basedir/env` (stage0's dump when KEEP_ENV is on), plus /var/run/s6
+# layouts (v2). The result is re-exported
+# as SUPERVISOR_TOKEN (the `ha` CLI reads that literal variable) and HA_TOKEN
+# for the REST calls in this script and in crush sessions.
+resolve_supervisor_token() {
+  [ -n "$SUPERVISOR_TOKEN" ] || SUPERVISOR_TOKEN="${HASSIO_TOKEN:-}"
+  if [ -z "$SUPERVISOR_TOKEN" ]; then
+    for _name in SUPERVISOR_TOKEN HASSIO_TOKEN; do
+      for _base in /run/s6/container_environment /run/s6/basedir/env /var/run/s6/container_environment; do
+        if [ -r "$_base/$_name" ]; then
+          _val=$(head -c 4096 "$_base/$_name" 2>/dev/null | tr -d '[:space:]')
+          if [ -n "$_val" ]; then
+            SUPERVISOR_TOKEN="$_val"
+            echo "[addon] SUPERVISOR_TOKEN recovered from s6 container_environment ($_base/$_name)"
+            break 2
+          fi
+        fi
+      done
+    done
+  fi
+  unset _name _base _val
+}
+resolve_supervisor_token
+export SUPERVISOR_TOKEN
+[ -n "$HASSIO_TOKEN" ] || HASSIO_TOKEN="$SUPERVISOR_TOKEN"
+export HASSIO_TOKEN
+HA_TOKEN="$SUPERVISOR_TOKEN"; export HA_TOKEN
 export HA_URL="http://supervisor/core"
 
 # s6-overlay-suexec strips the container environment when it re-execs the
@@ -17,13 +52,14 @@ export USER="${USER:-root}"
 export SHELL="${SHELL:-/bin/bash}"
 
 # ── Supervisor API self-check: make denials visible at startup ──────────
-# SUPERVISOR_TOKEN is injected by the Supervisor itself (never by the user);
-# the hassio_api / homeassistant_api flags in config.yaml grant its reach.
+# The token is resolved above (env / legacy alias / s6 envdir) and granted
+# reach by the hassio_api / homeassistant_api flags in config.yaml; never by
+# a user-set option.
 # One test call each so a denial shows up in the add-on log with a cause,
 # instead of as bare 401s later - there is no option field for this key,
 # only these flags (update/reinstall the add-on if they ever 401/403).
 if [ -z "$HA_TOKEN" ]; then
-  echo "[addon][WARN] SUPERVISOR_TOKEN missing - HA/supervisor API calls will 401 (update or reinstall the add-on so the Supervisor issues its key)"
+  echo "[addon][WARN] SUPERVISOR_TOKEN missing after env + legacy HASSIO_TOKEN + s6 envdir recovery - HA/supervisor API calls will 401 (update or reinstall the add-on so the Supervisor issues its key)"
 else
   SUP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/info || true)
   case "$SUP_CODE" in
