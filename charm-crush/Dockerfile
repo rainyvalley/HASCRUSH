@@ -4,7 +4,7 @@ FROM ${BUILD_FROM}
 # Labels
 LABEL maintainer="rainyvalley"
 LABEL org.opencontainers.image.title="HASSCrush — Crush for Home Assistant"
-LABEL org.opencontainers.image.description="Charm Crush CLI with web terminal, your own Ollama models, and the shared mem0 memory layer"
+LABEL org.opencontainers.image.description="Charm Crush CLI with web terminal, your own Ollama (or third-party) models, and optional MCP tie-ins"
 LABEL org.opencontainers.image.source="https://github.com/rainyvalley/HASSCharm"
 LABEL org.opencontainers.image.licenses="MIT"
 
