@@ -1,4 +1,6 @@
-# AGENTS.md — HASCRUSH
+# AGENTS.md — HASCRUSH (repo) — add-on display name: **HASSCrush**
+
+(The repo/folder is `HASCRUSH`; every user-visible listing uses **HASSCrush** — correct casing, never "HASSCRUSH" in prose/UI.)
 
 Home Assistant add-on repository: runs [Charm Crush](https://github.com/charmbracelet/crush) (terminal AI coding agent) inside HA, pointed at the owner's own Ollama models. Single add-on repo — everything lives under `charm-crush/`.
 

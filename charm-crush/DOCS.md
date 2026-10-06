@@ -1,4 +1,4 @@
-# HASCRUSH — Home Assistant add-ons for Charm tools
+# HASSCrush — Home Assistant add-ons for Charm tools
 
 <p align="center">
   <img src="charm-crush/logo.png" alt="Crush" width="520">
@@ -19,7 +19,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 ## Features
 
 - **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
-- **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); pick others in the TUI's `/` → model picker; refresh list = add-on restart
+- **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just GLM); refresh = add-on restart
 - **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
 - **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
 - **Memory (optional)** — point at any MCP memory server (e.g. the mem0 layer shared with Open WebUI); empty = off
@@ -54,6 +54,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
+| `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/searxng/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
@@ -85,7 +86,7 @@ Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_UR
 2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`).
 3. Pick `GLM 5.3 Flash` for everyday; pick `GLM 5.3` for deep thinking-heavy tasks; pick a vision model and drop in an image to inspect it.
 
-**Refreshing the model list** — because the list comes from your crushrc config (not live API discovery), refresh options by editing that config. Two ways:
+**Refreshing the model list** — the picker refreshes on add-on restart. With **Auto-discover All Models** (`crush_discover_models`, default on; `--discover-models true` under the hood) every start re-queries each provider's catalog, so new models appear with no config edit. For anything needing explicit metadata (prices, context window, effort), register it:
 
 1. **Central template (recommended for multi-machine)**: edit the template served at your `crush_config_url` URL — then *restart the add-on*. On start it re-fetches, and new models appear in the picker.
 2. **Manual**: edit `/homeassistant/.crushdata/config/crush/crushrc` inside the add-on (via the web terminal or the HA file editor), then restart the add-on.
@@ -246,9 +247,10 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
 | `CRUSH_SMALL_MODEL` | Helper model | Summaries/titles |
 | `CRUSH_DEEP_MODEL` | Deep model | Switch to it via the TUI picker |
 | `CRUSH_REASONING_EFFORT` | Daily-model effort | `low` / `high` / `max` |
+| `CRUSH_DISCOVER_MODELS` | Auto-discover All Models | `false` disables provider-catalog auto-discovery |
 | `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
 | `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
-| `MCP_SERVERS` | MCP Servers (JSON) | Same JSON array the option takes; beats the Options tab. Per-entry tokens ride inside the array (or as `MCP_TOKEN_<name>` envs as an escape hatch) |
+| `MCP_SERVERS` | MCP Servers (JSON) | Same JSON array the option takes; beats the Options tab. Per-entry tokens ride inside the array (`token` / `token_url`) |
 | `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
 | `TERM` | — | xterm-256color (set by the add-on) |
 
@@ -258,7 +260,10 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
 
    ```bash
    OLLAMA_API_KEY=...
-   MCP_TOKEN_mem0=...   # escape hatch: a mem0 entry without its own token
+   # MCP_TOKEN_* values are NOT set by hand: the add-on exports one per
+   # mcp_servers entry after resolving that entry's own token/token_url.
+   # A manually set value is only read by a fetched template that
+   # references $MCP_TOKEN_<name> itself.
    ```
 
    Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
@@ -299,7 +304,7 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 
 - **"Choose a model" onboarding on first launch**: no crushrc resolved — check the add-on log for `[addon]` lines. Set `ollama_api_key` or confirm `crush_config_url` is reachable from the HA host.
 - **`Unauthorized` errors in crush**: stale key — set the `ollama_api_key` option directly (it wins over everything), then restart the add-on.
-- **Model not in picker**: add it to the crushrc (central template or local file), restart the add-on.
+- **Model not in picker**: confirm the **Auto-discover All Models** option is on and restart the add-on (it lists every model the provider catalog exposes); for prices/ctx/vision metadata, register the model explicitly in the crushrc (central template or local file)
 - **`ha` command errors**: `HA_URL`/`HA_TOKEN` are automapped; if `ha` still fails, check the Supervisor connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
 - **Supervisor API `401` / `403` denials**: there is deliberately **no field to add a Supervisor API key** —
   the Supervisor injects `SUPERVISOR_TOKEN` itself, and `config.yaml`'s `homeassistant_api` / `hassio_api` /

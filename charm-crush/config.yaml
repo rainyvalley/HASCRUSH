@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — all your Ollama (or third-party) models at your fingertips, with optional MCP support for third-party tie-ins
-version: "1.0.25"
+version: "1.0.26"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:
@@ -37,6 +37,7 @@ options:
   crush_small_model: "ollama-cloud/glm-5.3-flash"
   crush_deep_model: "ollama-cloud/glm-5.3"
   crush_reasoning_effort: "high"
+  crush_discover_models: true   # merge each provider's full model catalog into the TUI picker
   ollama_key_url: ""     # optional: HTTP URL fetching OLLAMA_API_KEY=...
   disti_token: ""        # optional: X-Disti-Token header for token-gated secret-file fetches (crush disti)
   mcp_servers: ""         # ALL MCP servers incl. mem0 - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20} - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20}
@@ -58,6 +59,7 @@ schema:
   crush_small_model: str?
   crush_deep_model: str?
   crush_reasoning_effort: list(low|high|max)?
+  crush_discover_models: bool
   ollama_key_url: str?
   disti_token: str?
   mcp_servers: str?
