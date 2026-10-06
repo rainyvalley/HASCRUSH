@@ -1,4 +1,4 @@
-# AGENTS.md — HASSCharm
+# AGENTS.md — HASCRUSH
 
 Home Assistant add-on repository: runs [Charm Crush](https://github.com/charmbracelet/crush) (terminal AI coding agent) inside HA, pointed at the owner's own Ollama models. Single add-on repo — everything lives under `charm-crush/`.
 
