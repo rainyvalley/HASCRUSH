@@ -340,6 +340,19 @@ case "$KEY_URL" in
   # decision, LAN installer convention) but always logged
   http://*) echo "[addon][WARN] ollama_key_url uses plain http - the API key travels unencrypted; prefer https" >&2 ;;
 esac
+# ── Disti download credential (optional) ───────────────────────────────
+# When set, secret-file fetches (ollama_key_url and mcp_servers token_url)
+# send it as an X-Disti-Token header - the crush disti (nginx in /srv/crush)
+# serves its token/key files behind that header check. It is a DOWNLOAD
+# credential only: never an MCP bearer token, never written to any stored
+# file. Header, not a ?token= query: request lines get logged, headers don't.
+DISTI_TOKEN="${DISTI_TOKEN:-$(jq -r '.disti_token // ""' /data/options.json)}"  # env wins via ${VAR:-}
+case "$DISTI_TOKEN" in
+  "") ;;
+  *[!A-Za-z0-9._~-]*) echo "[addon][WARN] disti_token failed charset validation (URL-safe chars only) - gated fetches run without it" >&2; DISTI_TOKEN="" ;;
+esac
+DISTI_CURL=()
+[ -n "$DISTI_TOKEN" ] && DISTI_CURL=(-H "X-Disti-Token:${DISTI_TOKEN}")
 touch "$keyfile"; chmod 600 "$keyfile"
 if [ -n "$OPT_KEY" ]; then
   # addon option wins; rewrite the key file DELIBERATELY (not sed: keys may
@@ -348,7 +361,7 @@ if [ -n "$OPT_KEY" ]; then
   mv "$keyfile.tmp" "$keyfile"
   chmod 600 "$keyfile"
   echo "[addon][INFO] ollama API key set (env/env-file/option)"
-elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 "$KEY_URL" -o /tmp/key.new 2>/dev/null \
+elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 "${DISTI_CURL[@]}" "$KEY_URL" -o /tmp/key.new 2>/dev/null \
      && grep -q '^OLLAMA_API_KEY=' /tmp/key.new; then
   CENTRAL=$(grep -m1 '^OLLAMA_API_KEY=' /tmp/key.new)
   LOCAL=$(grep -m1 -s '^OLLAMA_API_KEY=' "$keyfile" || true)
@@ -516,8 +529,9 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
       MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
       if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
         if safe_url "$MCP_TOK_URL"; then
-          MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
-          # plain http carries the bearer in the clear; allowed (LAN
+          MCP_TOK=$(curl -fsSL --max-time 10 "${DISTI_CURL[@]}" "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+          # plain http carries the bearer in the clear AND the disti serves
+          # this file behind an X-Disti-Token header check; allowed (LAN
           # convention) but always logged
           case "$MCP_TOK_URL" in
             http://*) echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url uses plain http - the token travels unencrypted; prefer https" >&2 ;;

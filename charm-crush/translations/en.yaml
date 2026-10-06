@@ -54,6 +54,15 @@ configuration:
       Fetch the Ollama Cloud API key from your config server (plain OLLAMA_API_KEY=... file).
       Overrides a stale persisted key when the central copy changes. Ignored if
       the Ollama API Key option below is set directly.
+  disti_token:
+    name: Disti Download Token
+    description: >-
+      Optional download credential for token-gated secret files: a crush
+      disti (nginx) can serve its token copies (mem0/vision/openscad) and
+      ollama.key behind an X-Disti-Token header check. When set, the Key
+      URL and every MCP token_url fetch send that header. It is a download
+      credential only - NOT an MCP bearer token, and MCP access does not
+      depend on it. Leave empty if your disti serves files without a gate.
   mcp_servers:
     name: MCP Servers (JSON, optional)
     description: >-
