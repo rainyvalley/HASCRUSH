@@ -252,12 +252,14 @@ esac
 # executable as bash, so validation must cover the whole file. Size-capped
 # at 1 MB (--max-filesize plus an explicit wc -c for chunked/no-length
 # servers) so a runaway/infinitely-fed URL cannot fill the tmpfs.
+CRUSHRC_FETCHED=0
 if [ -n "$CONFIG_URL" ] \
    && curl -fsSL --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
    && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ] \
    && grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new; then
   mkdir -p "$(dirname "$crushrc")"
   mv -f /tmp/crushrc.new "$crushrc"   # same-dir move = atomic
+  CRUSHRC_FETCHED=1
   echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
 else
   if [ ! -f "$crushrc" ]; then
@@ -305,6 +307,33 @@ RCEOF
     echo "[addon] keeping existing crushrc (central template unreachable)"
   fi
 fi
+
+# ── config-version check (fires on EVERY start/restart) ────────────────
+# The central crushrc template carries a `# config-version: N` stamp and the
+# same distribution point publishes the matching /config.version; a
+# functional change bumps BOTH in lockstep (see /srv/crush). Comparing them
+# on every start makes staleness — or a disti-side out-of-sync mistake —
+# visible in the add-on log instead of silently grinding on a stale config.
+# config.version is a public bare integer (no token); the template URL
+# doubles as the base for it (strip the file component).
+CV_INSTALLED=$(sed -n 's/^# config-version:[[:space:]]*\([0-9]*\).*/\1/p' "$crushrc" 2>/dev/null | head -n 1 || true)
+CV_CENTRAL=""
+if [ -n "$CONFIG_URL" ]; then
+  CV_CENTRAL=$(curl -fsSL --max-time 5 "${CONFIG_URL%/*}/config.version" 2>/dev/null | tr -d '[:space:]' | head -c 16 || true)
+  case "$CV_CENTRAL" in *[!0-9]*) CV_CENTRAL="" ;; esac
+fi
+if [ -z "$CONFIG_URL" ]; then
+  echo "[addon] crush_config_url unset - no central config-version to check"
+elif [ -n "$CV_CENTRAL" ] && [ "$CV_CENTRAL" = "$CV_INSTALLED" ]; then
+  echo "[addon] crush config-version ${CV_CENTRAL} - current"
+elif [ -n "$CV_CENTRAL" ] && [ "$CRUSHRC_FETCHED" = "1" ]; then
+  echo "[addon][WARN] config-version mismatch: central=${CV_CENTRAL} template=${CV_INSTALLED:-none} - /config.version and the crushrc template are OUT OF SYNC (bump both together)"
+elif [ -n "$CV_CENTRAL" ]; then
+  echo "[addon][WARN] crushrc kept from a previous start (fetch failed) and it is STALE: central config-version=${CV_CENTRAL}, installed=${CV_INSTALLED:-none} - will retry next start"
+else
+  echo "[addon][WARN] central config-version unreachable - installed stamp: ${CV_INSTALLED:-none}"
+fi
+unset CV_INSTALLED CV_CENTRAL
 
 # ── LLM provider: ollama (default) or a 3rd-party OpenAI-compatible API ─
 PROVIDER=$(jq -r '.provider // "ollama"' /data/options.json)
