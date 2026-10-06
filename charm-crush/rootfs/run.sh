@@ -93,18 +93,25 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 ENV_FILE="$PERSIST_DIR/env"
 if [ -r "$ENV_FILE" ]; then
   # Only KEY=VALUE and export KEY=VALUE lines are honored - anything else
-  # (shell code, pipes, command substitution) is refused, so a stray line can
-  # never execute as code at startup.
+  # (shell code, pipes, command substitution) is FILTERED OUT and never runs:
+  # a filtered copy is sourced, not the raw file, so a stray or malicious
+  # line in this file can never execute as code at startup (this runs as
+  # root inside the add-on).
+  ENV_CLEAN="$PERSIST_DIR/.env.clean.$$"
+  grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*="?[A-Za-z0-9_./:@+%-]*"?[[:space:]]*(#.*)?$' "$ENV_FILE" > "$ENV_CLEAN" || true
   BAD=$(grep -vE '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*="?[A-Za-z0-9_./:@+%-]*"?[[:space:]]*(#.*)?$' "$ENV_FILE" || true)
   if [ -n "$BAD" ]; then
-    echo "[addon][WARN] $ENV_FILE has non KEY=VALUE lines - they were NOT executed:" >&2
+    echo "[addon][WARN] $ENV_FILE has non KEY=VALUE lines - they were SKIPPED (not executed):" >&2
     echo "$BAD" >&2 | sed 's/^/    /'
   fi
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
-  echo "[addon] env defaults sourced from $ENV_FILE"
+  if [ -s "$ENV_CLEAN" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_CLEAN"
+    set +a
+    echo "[addon] env defaults sourced from $ENV_FILE (KEY=VALUE lines only)"
+  fi
+  rm -f "$ENV_CLEAN"
 fi
 
 # ── Persistence symlinks ────────────────────────────────────────────────
@@ -200,12 +207,55 @@ else
   inject_limits
 fi
 
+# ── charset validators for values written into the bash-executed crushrc ──
+# The crushrc is a BASH script, so every value printf'd or sed'd into a
+# generated line is potential code execution in this add-on (as root).
+# Option-/env-sourced values get tight charsets here and are skipped with a
+# WARN when they fail - never written. safe_url: http/https only, URL-safe
+# chars, excluding the ones that would break the double-quoted crushrc line
+# (` $ " \ ) or the #-delimited sed s/// commands some values are fed to
+# (& too - it is sed's whole-match in a replacement, and query strings
+# rarely appear on these base/token URLs). safe_text: commands/args/model
+# ids - rejects the same shell-dangerous set.
+safe_url() {
+  case "$1" in
+    http://*|https://*) ;;
+    *) return 1 ;;
+  esac
+  case "$1" in
+    *[!A-Za-z0-9._~/:?+@,%-]*) return 1 ;;
+  esac
+  return 0
+}
+safe_text() {
+  case "$1" in
+    *[!A-Za-z0-9' '._,/@%+=:-]*) return 1 ;;
+    *'('*|*'`'*) return 1 ;;
+  esac
+  return 0
+}
+
 # ── crushrc: central template, or a self-contained fallback ────────────
 crushrc="$PERSIST_DIR/config/crush/crushrc"
 CONFIG_URL="${CRUSH_CONFIG_URL:-$(jq -r '.crush_config_url // ""' /data/options.json)}"
+if [ -n "$CONFIG_URL" ] && ! safe_url "$CONFIG_URL"; then
+  echo "[addon][WARN] crush_config_url failed charset validation (must be http/https + URL-safe chars) - ignored" >&2
+  CONFIG_URL=""
+fi
+# Plain-HTTP caveat (user decision: http stays allowed): the fetched template
+# is a BASH script crush later executes, so tampered-in-transit content runs
+# in this add-on as root. Warn once; https is strongly preferred.
+case "$CONFIG_URL" in
+  http://*) echo "[addon][WARN] crush_config_url uses plain http - the fetched script could be modified in transit on the wire; prefer https" >&2 ;;
+esac
+# Sanity-check the FULL download, not just the first 2 KB: every line is
+# executable as bash, so validation must cover the whole file. Size-capped
+# at 1 MB (--max-filesize plus an explicit wc -c for chunked/no-length
+# servers) so a runaway/infinitely-fed URL cannot fill the tmpfs.
 if [ -n "$CONFIG_URL" ] \
-   && curl -fsSL --max-time 10 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
-   && head -c 2000 /tmp/crushrc.new | grep -qE '(provider|model) (add|large|small)|crushrc'; then
+   && curl -fsSL --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
+   && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ] \
+   && grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new; then
   mkdir -p "$(dirname "$crushrc")"
   mv -f /tmp/crushrc.new "$crushrc"   # same-dir move = atomic
   echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
@@ -263,6 +313,8 @@ if [ "$PROVIDER" = "third_party" ]; then
   TP_KEY="${THIRD_PARTY_API_KEY:-$(jq -r '.third_party_api_key // ""' /data/options.json)}"
   if [ -z "$TP_URL" ] || [ -z "$TP_KEY" ]; then
     echo "[addon][ERROR] provider=third_party but third_party_base_url / third_party_api_key are missing - falling back to ollama"
+  elif ! safe_url "$TP_URL"; then
+    echo "[addon][WARN] third_party_base_url failed charset validation (http/https + URL-safe chars only) - falling back to ollama" >&2
   else
     TPID=openai-compat-3p
     sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
@@ -279,6 +331,15 @@ fi
 keyfile="$PERSIST_DIR/config/crush/ollama.env"
 OPT_KEY="${OLLAMA_API_KEY:-$(jq -r '.ollama_api_key // ""' /data/options.json)}"
 KEY_URL="${OLLAMA_KEY_URL:-$(jq -r '.ollama_key_url // ""' /data/options.json)}"
+if [ -n "$KEY_URL" ] && ! safe_url "$KEY_URL"; then
+  echo "[addon][WARN] ollama_key_url failed charset validation (http/https + URL-safe chars only) - ignored" >&2
+  KEY_URL=""
+fi
+case "$KEY_URL" in
+  # plain http ships the API key unencrypted on the wire; allowed (user
+  # decision, LAN installer convention) but always logged
+  http://*) echo "[addon][WARN] ollama_key_url uses plain http - the API key travels unencrypted; prefer https" >&2 ;;
+esac
 touch "$keyfile"; chmod 600 "$keyfile"
 if [ -n "$OPT_KEY" ]; then
   # addon option wins; rewrite the key file DELIBERATELY (not sed: keys may
@@ -438,12 +499,33 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
     case "$MCP_NAME" in
       *[!A-Za-z0-9_-]*) echo "[addon][WARN] mcp_servers: '$MCP_NAME' not a safe name - skipped"; continue ;;
     esac
+    # generated rc fragments are bash; validate URL/command charsets before
+    # anything is written (safe_url/safe_text: no shell metachars, so a
+    # crafted option value can never become code in the crushrc)
+    if [ -n "$MCP_URL" ] && ! safe_url "$MCP_URL"; then
+      echo "[addon][WARN] mcp_servers '$MCP_NAME': url failed charset validation (http/https + URL-safe chars only) - skipped" >&2
+      continue
+    fi
+    if [ -n "$MCP_CMD" ] && ! safe_text "$MCP_CMD"; then
+      echo "[addon][WARN] mcp_servers '$MCP_NAME': command failed charset validation (shell metachars not allowed) - skipped" >&2
+      continue
+    fi
     mcp_remove "$MCP_NAME"
     if [ -n "$MCP_URL" ]; then
       MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
       MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
       if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
-        MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+        if safe_url "$MCP_TOK_URL"; then
+          MCP_TOK=$(curl -fsSL --max-time 10 "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+          # plain http carries the bearer in the clear; allowed (LAN
+          # convention) but always logged
+          case "$MCP_TOK_URL" in
+            http://*) echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url uses plain http - the token travels unencrypted; prefer https" >&2 ;;
+          esac
+        else
+          echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url failed charset validation - not fetched" >&2
+          MCP_TOK=""
+        fi
       fi
       if [ -n "$MCP_TOK" ]; then
         MCP_TOKENS_EXPORTED=1
@@ -459,6 +541,7 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
       MCP_ARGS_LINE=""
       MCP_NARGS=$(echo "$MCP_ENTRY" | jq '.args // [] | length')
       _arg_idx=0
+      _mcp_args_ok=1
       while [ "$_arg_idx" -lt "$MCP_NARGS" ]; do
         # one --args token per element: crush exec's argv directly, no shell
         # splitting - values may contain spaces/slashes safely. SPACE form is
@@ -470,10 +553,21 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
         # a paste with an editor line-wrap can embed raw \n/\r inside a
         # value; strip them so the generated rc line never breaks mid-token
         _mcp_arg=$(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]" | tr -d '\r\n')
+        if ! safe_text "$_mcp_arg"; then
+          echo "[addon][WARN] mcp_servers '$MCP_NAME': arg #$_arg_idx failed charset validation (shell metachars not allowed) - entry skipped" >&2
+          _mcp_args_ok=0
+          break
+        fi
         MCP_ARGS_LINE="$MCP_ARGS_LINE --args $_mcp_arg"
         _arg_idx=$((_arg_idx + 1))
       done
+      [ "$_mcp_args_ok" = "1" ] || continue
       MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""' | tr -d '\r\n[:space:]')
+      case "$MCP_TIMEOUT" in
+        "") ;;
+        # numeric only: the timeout is printf'd bare into the rc line
+        *[!0-9]*) echo "[addon][WARN] mcp_servers '$MCP_NAME': timeout must be numeric - entry skipped" >&2; continue ;;
+      esac
       if [ -n "$MCP_TIMEOUT" ]; then
         printf 'mcp add %s --type stdio --command "%s"%s --timeout %s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" "$MCP_TIMEOUT" >> "$crushrc"
       else
@@ -521,6 +615,10 @@ apply_model_slot() {
   # $1 = slot (large|small), $2 = chosen model id ("" = keep config's choice).
   # Replaces ONLY the model id, preserving any trailing flags (effort etc.).
   [ -n "$2" ] || return 0
+  if ! safe_text "$2"; then
+    echo "[addon][WARN] crush_${1}_model failed charset validation (shell metachars not allowed) - slot left unchanged" >&2
+    return 0
+  fi
   if grep -qE "^model $1 " "$crushrc" 2>/dev/null; then
     sed -i "s#^model $1 [^ ]*#model $1 $2#" "$crushrc"
   else
@@ -535,9 +633,14 @@ apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
 # deep model: register if not already registered (escaped, busybox-safe grep)
 if [ -n "$DEEP_MODEL" ]; then
-  ESC=$(printf '%s' "$DEEP_MODEL" | sed 's/[.[\\*+^$()|?{]/\\&/g')
-  grep -qE "^model add .*/$ESC( |$)" "$crushrc" 2>/dev/null || \
-    printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$DEEP_MODEL" >> "$crushrc"
+  if ! safe_text "$DEEP_MODEL"; then
+    echo "[addon][WARN] crush_deep_model failed charset validation (shell metachars not allowed) - deep model not registered" >&2
+    DEEP_MODEL=""
+  else
+    ESC=$(printf '%s' "$DEEP_MODEL" | sed 's/[.[\\*+^$()|?{]/\\&/g')
+    grep -qE "^model add .*/$ESC( |$)" "$crushrc" 2>/dev/null || \
+      printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$DEEP_MODEL" >> "$crushrc"
+  fi
 fi
 
 if [ -n "$EFFORT" ]; then
@@ -603,7 +706,24 @@ if [ "$SESSION_PERSIST" = "true" ]; then
 else
   SHELL_CMD='bash --login'
 fi
-cd "$WORKDIR" 2>/dev/null || cd /homeassistant
+WORKDIR=$(jq -r '.working_directory // "/homeassistant"' /data/options.json)
+# Restrict the agent's cwd to the add-on's mapped roots (same list as DOCS.md).
+# Prefix-match alone can be bypassed with traversal (/homeassistant/../root),
+# so cd first, then verify the RESOLVED path (pwd -P) against the roots and
+# fall back if it lands outside — crush runs as root in this container, so an
+# unchecked cwd would expose the whole filesystem to the agent.
+if cd "$WORKDIR" 2>/dev/null; then
+  case "$(pwd -P)" in
+    /homeassistant|/homeassistant/*|/config|/config/*|/share|/share/*|/media|/media/*|/ssl|/ssl/*|/backup|/backup/*) ;;
+    *)
+      echo "[addon][WARN] working_directory '$WORKDIR' resolves outside the mapped roots (/homeassistant /config /share /media /ssl /backup) - using /homeassistant"
+      cd /homeassistant
+      ;;
+  esac
+else
+  echo "[addon][WARN] working_directory '$WORKDIR' unusable - using /homeassistant"
+  cd /homeassistant
+fi
 
 exec ttyd --port 7681 --writable --ping-interval 30 --max-clients 5 \
     -t fontSize=$FONT_SIZE \

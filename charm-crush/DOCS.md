@@ -19,7 +19,6 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 ## Features
 
 - **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
-- **Crush in the HA sidebar** — web terminal behind HA's own authentication
 - **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); pick others in the TUI's `/` → model picker; refresh list = add-on restart
 - **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
 - **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
@@ -49,13 +48,12 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local/vision models |
 | `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
 | `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL). Same key the mem0 REST API uses when mem0 shares it |
-| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` |
+| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
 | `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/searxng/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
-| `mcp_servers` | *(empty)* | Any additional MCP servers as one JSON array (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -158,6 +156,8 @@ Secrets never land in the generated crushrc: the add-on exports resolved tokens 
 
 `crush_config_url` = any **plain-HTTP URL** of a crushrc text file. The natural host: another machine already running Crush (share its rc file), or any static server (Caddy, `python -m http.server`, NAS, GitHub Pages). On start the add-on fetches it; keys stay out of the template — the rc resolves secrets from the environment the add-on exports, so one template serves a fleet safely.
 
+Validated at fetch time (since 1.0.22): the URL must be http(s) with URL-safe characters only, the fetched file is capped at 1 MB, and it must still look like a crushrc (`provider` / `model` markers) — anything else falls back to the built-in config with a `[addon][WARN]` in the log. Plain `http://` URLs warn explicitly: the script could be modified in transit on the wire, so prefer `https://` where the host supports it.
+
 ## API usage (the `ha` CLI + HA's REST)
 
 `HA_TOKEN` (Supervisor token) and `HA_URL` are in the environment; use them directly:
@@ -258,6 +258,9 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
    ```
 
    Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
+   Since 1.0.22 only well-formed `KEY=VALUE` lines are sourced — anything else
+   (shell commands, `curl ... | sh`, multiline values) is **skipped and logged**
+   with a `[addon][WARN]`, never executed.
 2. **The Options tab** — same names, UI form.
 3. **Real env** (`docker run -e`, supervised installs only) — highest precedence.
 
@@ -281,6 +284,9 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
   ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
   decision; raises the rating back to 1 while enabled).
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
+- The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
+  it serves a live shell over the add-on's port and is **only reachable through HA ingress** —
+  HA's own authentication is the boundary in front of it, and it is never published directly.
 - API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
   and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
