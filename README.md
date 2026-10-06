@@ -1,4 +1,4 @@
-# HASSCharm — Home Assistant add-ons for Charm tools
+# HASCRUSH — Home Assistant add-ons for Charm tools
 
 <p align="center">
   <img src="charm-crush/logo.png" alt="Crush" width="520">
@@ -6,7 +6,7 @@
 
 Charm's terminal AI tools running inside Home Assistant, pointed at your own models and infrastructure.
 
-**Add-on in this repo: [`charm-crush/`](charm-crush/)** — everything below documents it. Install via **Settings → Add-ons → Add-on Store → ⋮ → Repositories** → add `https://github.com/rainyvalley/HASSCharm`.
+**Add-on in this repo: [`charm-crush/`](charm-crush/)** — everything below documents it. Install via **Settings → Add-ons → Add-on Store → ⋮ → Repositories** → add `https://github.com/rainyvalley/HASCRUSH`.
 
 ---
 
@@ -34,7 +34,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 ## Install
 
 1. In HA: **Settings → Add-ons → Add-on Store → ⋮ (top right) → Repositories**, add:
-   `https://github.com/rainyvalley/HASSCharm`
+   `https://github.com/rainyvalley/HASCRUSH`
 2. Refresh the store; install **Crush**.
 3. Configure options (see below) — at minimum an **Ollama API Key** (or a key URL), unless your config template resolves the key itself.
 4. Start the add-on; open it from the sidebar (panel title "Crush").
