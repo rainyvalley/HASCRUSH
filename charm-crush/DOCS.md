@@ -159,6 +159,8 @@ Secrets never land in the generated crushrc: the add-on exports resolved tokens 
 
 Validated at fetch time (since 1.0.22): the URL must be http(s) with URL-safe characters only, the fetched file is capped at 1 MB, and it must still look like a crushrc (`provider` / `model` markers) — anything else falls back to the built-in config with a `[addon][WARN]` in the log. Plain `http://` URLs warn explicitly: the script could be modified in transit on the wire, so prefer `https://` where the host supports it.
 
+**Config-version check (since 1.0.24)**: a central template stamped `# config-version: N` is verified at every start against the matching `/config.version` published beside it. Current → `[addon] crush config-version N - current`; a mismatch or unreachable version is logged as a `[addon][WARN]` so a stale config (or a distribution server with the version file and template out of sync) shows up in the add-on log instead of grinding on silently. Templates without a stamp still work — the check just reports `installed=none`.
+
 ## API usage (the `ha` CLI + HA's REST)
 
 `HA_TOKEN` (Supervisor token) and `HA_URL` are in the environment; use them directly:
