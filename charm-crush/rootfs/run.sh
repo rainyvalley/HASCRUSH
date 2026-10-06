@@ -86,8 +86,11 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 # Precedence: real environment (docker run -e / HA env) > this file > add-on
 # option > central URL > persisted file. Example lines:
 #   OLLAMA_API_KEY=sk-...
-#   MCP_TOKEN_mem0=...   (only needed if a mcp_servers "mem0" entry has no
-#                        token of its own - escape hatch, normally unused)
+#   MCP_TOKEN_<name>=...  (NOT a token source - mcp_servers entries carry
+#                        their own token/token_url; run.sh exports one of
+#                        these per entry after resolving it. A manually set
+#                        value is only read by a fetched template that
+#                        references $MCP_TOKEN_<name> itself)
 #   CRUSH_CONFIG_URL=http://my-server/crushrc.template
 # Missing file = no defaults set; everything still works from options/schema.
 ENV_FILE="$PERSIST_DIR/env"
@@ -275,9 +278,13 @@ export OLLAMA_API_KEY
 or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env (home is not
 defined without it)."; exit 1; }
 
-provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY"
+# --discover-models true merges the providers' full catalogs into the picker
+# (every ollama.com model the key can call + the whole LAN catalog) - explicit
+# `model add` entries below always win over discovered ones. Toggle:
+# crush_discover_models option / CRUSH_DISCOVER_MODELS env.
+provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1" --api-key "$OLLAMA_API_KEY" --discover-models true
 if [ -n "$LOCAL_OLLAMA_URL" ]; then
-provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL"
+provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL" --discover-models true
 fi
 
 # Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
@@ -355,6 +362,27 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon] provider=third_party: models remapped to $TPID ($TP_URL)"
   fi
 fi
+
+# ── Model auto-discovery: crush_discover_models option / CRUSH_DISCOVER_MODELS env
+# The native --discover-models true provider flag (also used by the central
+# template) merges the provider's full catalog into the TUI picker; explicit
+# `model add` entries win on conflicts. false disables it everywhere (fetched
+# templates included); true only ever touches the add-on's own fallback rc -
+# a fetched template stays exactly what its author served.
+DISCOVER_MODELS="${CRUSH_DISCOVER_MODELS:-$(jq -r '.crush_discover_models // true' /data/options.json)}"
+case "$DISCOVER_MODELS" in false|0|no) DISCOVER_MODELS=false ;; *) DISCOVER_MODELS=true ;; esac
+if [ "$DISCOVER_MODELS" = false ]; then
+  sed -i 's/--discover-models true/--discover-models false/g' "$crushrc"
+  echo "[addon] model auto-discovery disabled (crush_discover_models=false) - picker shows only hand-registered models"
+elif [ "$CRUSHRC_FETCHED" != "1" ] \
+   && grep -q '^# Built-in fallback crushrc' "$crushrc" 2>/dev/null \
+   && ! grep -q -- '--discover-models true' "$crushrc" 2>/dev/null; then
+  # legacy fallback rc written before discovery: flip it on in place
+  sed -i 's#--api-key "\$OLLAMA_API_KEY"$#& --discover-models true#' "$crushrc" 2>/dev/null
+  sed -i 's#--type ollama --base-url "\$LOCAL_OLLAMA_URL"$#& --discover-models true#' "$crushrc" 2>/dev/null
+  echo "[addon] model auto-discovery enabled on the existing fallback crushrc"
+fi
+unset DISCOVER_MODELS
 
 # ── Ollama API key: option -> central key URL -> existing file ─────────
 keyfile="$PERSIST_DIR/config/crush/ollama.env"

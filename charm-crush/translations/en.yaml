@@ -41,6 +41,15 @@ configuration:
     description: >-
       Effort for the daily model's thinking: low (off), high (model-decided
       depth), max (forced long). Default high.
+  crush_discover_models:
+    name: Auto-discover All Models
+    description: >-
+      Ask each configured provider for its full model catalog at startup
+      (Ollama Cloud and/or your LAN Ollama) and merge it into the TUI model
+      picker - every model, not just the hand-registered GLM ones. Explicitly
+      registered models keep their metadata and always win. Disable to show
+      only hand-registered models (useful on catalog-huge third-party
+      endpoints). Applies on add-on restart.
   crush_config_url:
     name: Central crushrc Template URL
     description: >-
@@ -69,17 +78,16 @@ configuration:
       ALL MCP servers, including mem0 - one JSON array; each entry is one
       server. HTTP form: {"name":"vision","url":"http://192.0.2.10:3011/mcp",
       "token_url":"http://192.0.2.10/vision-mcp.token"} ("token" instead of
-      token_url also works; omit both for no auth header). Stdio form:
-      {"name":"openscad","command":"docker","args":["run","--rm","-i",
-      "--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],
-      "timeout":20} - note the TCP bridge is token-gated: the client's FIRST
-      stdin line must be the bridge token (mimic the bridge's auth-gate.sh;
-      a bare socat relay now gets closed after ~1s), so stdio entries need a
-      wrapper that prints the token before relaying. Every token belongs on
-      its own entry - there are no
-      separate token fields anymore. Leave empty (or omit mem0) to disable
-      the memory MCP; empty list = template servers as-is. Entries replace
-      only their own server's line. Changes apply on add-on restart.
+      token_url also works; omit both for no auth header). Stdio form
+      (since 1.0.25): {"name":"openscad","command":"socat",
+      "args":["STDIO","TCP:192.0.2.10:3010"],"token_url":"http://192.0.2.10/openscad-mcp.token",
+      "timeout":20} - stdio entries accept the same token/token_url fields:
+      when one resolves, the entry runs as a sh wrapper that sends the token
+      as the FIRST stdin line and then execs the command (the relay tool must
+      be in the add-on image; socat already is). Every token belongs on its
+      own entry. Leave empty (or omit mem0) to disable the memory MCP; empty
+      list = template servers as-is. Entries replace only their own server's
+      line. Changes apply on add-on restart.
   ollama_api_key:
     name: Ollama API Key
     description: >-
