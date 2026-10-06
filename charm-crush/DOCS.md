@@ -22,7 +22,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 - **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just GLM); refresh = add-on restart
 - **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
 - **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
-- **Memory (optional)** — point at any MCP memory server (e.g. the mem0 layer shared with Open WebUI); empty = off
+- **Memory (optional)** — point at any MCP memory server (e.g. a mem0-style shared layer your other chat clients also use); empty = off
 - **`ha` CLI preinstalled and pre-authenticated** — Supervisor token env-only, never written to disk
 
 ## Requirements
@@ -47,15 +47,15 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `third_party_api_key` | *(empty)* | Required with `third_party` |
 | `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local/vision models |
 | `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
-| `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL). Same key the mem0 REST API uses when mem0 shares it |
+| `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL) |
 | `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
-| `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (mem0/vision/openscad token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
+| `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (memory/vision/CAD token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
 | `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
-| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/searxng/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
+| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -105,17 +105,17 @@ model large ollama-cloud/glm-5.3-flash --reasoning-effort high
 model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 ```
 
-## Memory (mem0) examples
+## Memory (an MCP memory server)
 
 Memory is one entry in the `mcp_servers` JSON (see next section), not a separate field:
 
 | Want | Set |
 |---|---|
-| Shared memory with Open WebUI | a `mem0` entry with its URL + `token`/`token_url` |
+| A shared memory layer (e.g. a mem0-style server your other chat clients also use) | its URL + `token`/`token_url` in one entry |
 | Another MCP memory server | an entry named anything, its URL + token |
-| No memory | omit the mem0 entry (and set `mcp_servers` if any other server is wanted) |
+| No memory | omit the memory entry (and set `mcp_servers` if any other server is wanted) |
 
-**Usage from the agent**, once wired (these are the mem0-mcp-wrapper's tools; similar clients expose similar ones):
+**Usage from the agent**, once wired (example tool names from a mem0-style memory server; a different server exposes similar ones):
 
 ```bash
 # the agent recalls automatically (server instructions tell it to search first); manually:
@@ -126,29 +126,29 @@ add_memory(messages='[{"role":"user","content":"Trash cans go out Thursday eveni
 memory_history(memory_id="<id from search>")
 ```
 
-`user_id` matters: it's the memory space. Use the **same id in every client** (Open WebUI filter's `user_id_field=email` + crushrc defaults) and everything shares one brain.
+`user_id` matters: it's the memory space. Use the **same id in every client** and everything shares one brain.
 
-**Multiple users on the same memory server?** Issue per-token grants on the mem0-mcp-wrapper side: `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...` gives each bearer its own reachable spaces; then set that token on this add-on's `mem0` entry per install. See the wrapper's README security notes.
+**Multiple users on the same memory server?** If it supports per-token user grants (its README documents the mechanism — e.g. a wrapper mapping tokens to users via an env like `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...`), issue one token per user and set each install's memory entry to its own token.
 
-## MCP servers (mem0, vision, searxng, openscad, ...)
+## MCP servers (memory, vision, search, CAD, ...)
 
 **All** MCP servers — memory included — are wired from the Options tab via one option: `mcp_servers`, a JSON array with one entry per server. Entries **replace only their own server's line**; a central template's other `mcp add` lines stay untouched. Empty = template servers as-is. Applies on add-on restart.
 
 **Complete example** (fake host/keys — copy the shape, replace the values):
 
 ```json
-[{"name":"mem0","url":"http://mcp.example.lan:8300/mcp","token_url":"http://mcp.example.lan/mem0.token"},
+[{"name":"memory","url":"http://mcp.example.lan:8300/mcp","token_url":"http://mcp.example.lan/memory-mcp.token"},
  {"name":"vision","url":"http://mcp.example.lan:3011/mcp","token":"sample-vision-token"},
- {"name":"searxng","url":"http://mcp.example.lan:3000/mcp"},
+ {"name":"search","url":"http://mcp.example.lan:3000/mcp"},
  {"name":"browser","url":"http://mcp.example.lan:8931/mcp"},
- {"name":"openscad","command":"socat","args":["STDIO","TCP:mcp.example.lan:3010"],"token_url":"http://mcp.example.lan/openscad-mcp.token","timeout":20}]
+ {"name":"cad","command":"socat","args":["STDIO","TCP:mcp.example.lan:3010"],"token_url":"http://mcp.example.lan/cad-mcp.token","timeout":20}]
 ```
 
 Entry forms:
 
-- **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`searxng`, `browser` above).
+- **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`search`, `browser` above).
 - **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout`.
-- **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `openscad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
+- **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `cad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
 - If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log — a LAN server may legitimately not need auth.
 
 **Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
@@ -320,7 +320,7 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
   Never paste a Profile-page long-lived token into any field — it does not work against
   `http://supervisor`. Note: **updating the add-on re-keys it**; tokens are only valid for the current
   install.
-- **mem0 tools error**: run `crush logs` / check the add-on log — a `mem0` entry in `mcp_servers` with no reachable URL or no token will say so; 401 = token wrong on the entry.
+- **Memory-server tool errors**: run `crush logs` / check the add-on log — an entry in `mcp_servers` with no reachable URL or no token will say so; 401 = the token on that entry is wrong.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
 ## License

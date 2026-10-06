@@ -75,19 +75,19 @@ configuration:
   mcp_servers:
     name: MCP Servers (JSON, optional)
     description: >-
-      ALL MCP servers, including mem0 - one JSON array; each entry is one
+      ALL MCP servers, including memory - one JSON array; each entry is one
       server. HTTP form: {"name":"vision","url":"http://192.0.2.10:3011/mcp",
       "token_url":"http://192.0.2.10/vision-mcp.token"} ("token" instead of
       token_url also works; omit both for no auth header). Stdio form
-      (since 1.0.25): {"name":"openscad","command":"socat",
-      "args":["STDIO","TCP:192.0.2.10:3010"],"token_url":"http://192.0.2.10/openscad-mcp.token",
+      (since 1.0.25): {"name":"cad","command":"socat",
+      "args":["STDIO","TCP:192.0.2.10:3010"],"token_url":"http://192.0.2.10/cad-mcp.token",
       "timeout":20} - stdio entries accept the same token/token_url fields:
       when one resolves, the entry runs as a sh wrapper that sends the token
       as the FIRST stdin line and then execs the command (the relay tool must
       be in the add-on image; socat already is). Every token belongs on its
-      own entry. Leave empty (or omit mem0) to disable the memory MCP; empty
-      list = template servers as-is. Entries replace only their own server's
-      line. Changes apply on add-on restart.
+      own entry. Leave empty (or omit your memory entry) to disable the
+      memory MCP; empty list = template servers as-is. Entries replace only
+      their own server's line. Changes apply on add-on restart.
   ollama_api_key:
     name: Ollama API Key
     description: >-
