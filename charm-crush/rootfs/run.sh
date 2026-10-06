@@ -514,6 +514,12 @@ mcp_sanitize() {
 #           token lands on the entry.
 #           Omitting mem0 from the list = no memory MCP (the legacy
 #           mem0_mcp_url field no longer wires anything; scrubbed below).
+#   stdio:  {"name":"openscad","command":"socat","args":["STDIO","TCP:host:3010"],
+#            "token_url":"https://host/openscad-mcp.token","timeout":20}
+#           stdio entries take token/token_url too: when one resolves, the
+#           line is emitted as a sh -c gate wrapper that sends the token as
+#           the FIRST stdin line (the client half of a token-gated TCP
+#           bridge; the relay tool must be in the image - socat is).
 #           When the option is EMPTY/invalid, a template's own mem0 line is
 #           left in place (crush_config_url users keep their template's
 #           memory wiring). The fallback rc never had one.
@@ -581,7 +587,40 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
         [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added without auth header"
       fi
     elif [ -n "$MCP_CMD" ]; then
+      # stdio entries may ALSO carry token/token_url exactly like http
+      # entries. When a token resolves, the entry is emitted as a sh -c
+      # gate-pipe: the token goes out as the FIRST stdin line, then the
+      # original command is exec'd against crush's stdin. That is the client
+      # half of a token-gated TCP relay (e.g. an openscad bridge on :3010
+      # that closes bare relays after ~1s) - the same shape the central
+      # template ships via `docker run` for machines WITH a docker socket,
+      # redone for the add-on's dockerless container, where the relay tool
+      # (socat) must already be IN the image. The token is still only
+      # REFERENCED in the rc ($MCP_TOKEN_<name>, exported just below) -
+      # never inlined (since 1.0.25).
+      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
+      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
+      if [ -z "$MCP_TOK" ] && [ -n "$MCP_TOK_URL" ]; then
+        if safe_url "$MCP_TOK_URL"; then
+          MCP_TOK=$(curl -fsSL --max-time 10 "${DISTI_CURL[@]}" "$MCP_TOK_URL" 2>/dev/null | tr -d '[:space:]')
+          # plain http carries the bearer in the clear AND the disti serves
+          # these files behind an X-Disti-Token header check; allowed (LAN
+          # convention) but always logged
+          case "$MCP_TOK_URL" in
+            http://*) echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url uses plain http - the token travels unencrypted; prefer https" >&2 ;;
+          esac
+        else
+          echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url failed charset validation - not fetched" >&2
+          MCP_TOK=""
+        fi
+      fi
       MCP_ARGS_LINE=""
+      # gate wrapper body (sh code run by `sh -c`): each command word gets a
+      # double quote so a value with spaces stays one argv element. safe_text
+      # rejects ALL quote/backslash/dollar characters, so nothing an operator
+      # pastes can ever break out of those quotes or the rc's outer
+      # single-quoted token below.
+      MCP_GATE="exec \"${MCP_CMD}\""
       MCP_NARGS=$(echo "$MCP_ENTRY" | jq '.args // [] | length')
       _arg_idx=0
       _mcp_args_ok=1
@@ -602,6 +641,7 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
           break
         fi
         MCP_ARGS_LINE="$MCP_ARGS_LINE --args $_mcp_arg"
+        MCP_GATE="$MCP_GATE \"$_mcp_arg\""
         _arg_idx=$((_arg_idx + 1))
       done
       [ "$_mcp_args_ok" = "1" ] || continue
@@ -611,10 +651,27 @@ if [ "$MCP_JSON" != "[]" ] && echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/n
         # numeric only: the timeout is printf'd bare into the rc line
         *[!0-9]*) echo "[addon][WARN] mcp_servers '$MCP_NAME': timeout must be numeric - entry skipped" >&2; continue ;;
       esac
-      if [ -n "$MCP_TIMEOUT" ]; then
+      if [ -n "$MCP_TOK" ]; then
+        MCP_TOKENS_EXPORTED=1
+        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
+        # single-quoted rc token around the sh -c body keeps the variable
+        # UNEXPANDED in the stored rc (resolved when crush launches the
+        # server). The printf "%s\n" newline inside is written as literal
+        # \n here and becomes a real newline inside the inner sh.
+        if [ -n "$MCP_TIMEOUT" ]; then
+          MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$MCP_TOKEN_${MCP_NAME}\"; $MCP_GATE; }' --timeout $MCP_TIMEOUT"
+        else
+          MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$MCP_TOKEN_${MCP_NAME}\"; $MCP_GATE; }'"
+        fi
+        printf '%s\n' "$MCP_RC" >> "$crushrc"
+      elif [ -n "$MCP_TIMEOUT" ]; then
         printf 'mcp add %s --type stdio --command "%s"%s --timeout %s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" "$MCP_TIMEOUT" >> "$crushrc"
       else
         printf 'mcp add %s --type stdio --command "%s"%s\n' "$MCP_NAME" "$MCP_CMD" "$MCP_ARGS_LINE" >> "$crushrc"
+        # no token resolves: still wire the server (a bare relay is the
+        # wrong posture for a gated bridge, so say so) - same posture as a
+        # tokenless http entry
+        [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added WITHOUT the token gate (a gated bridge will close this relay)" >&2
       fi
     else
       echo "[addon][WARN] mcp_servers '$MCP_NAME': neither url nor command set - skipped"

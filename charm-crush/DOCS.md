@@ -140,14 +140,15 @@ memory_history(memory_id="<id from search>")
  {"name":"vision","url":"http://mcp.example.lan:3011/mcp","token":"sample-vision-token"},
  {"name":"searxng","url":"http://mcp.example.lan:3000/mcp"},
  {"name":"browser","url":"http://mcp.example.lan:8931/mcp"},
- {"name":"openscad","command":"docker","args":["run","--rm","-i","--network","host","alpine/socat","STDIO","TCP:mcp.example.lan:3010"],"timeout":20}]
+ {"name":"openscad","command":"socat","args":["STDIO","TCP:mcp.example.lan:3010"],"token_url":"http://mcp.example.lan/openscad-mcp.token","timeout":20}]
 ```
 
 Entry forms:
 
 - **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`searxng`, `browser` above).
-- **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout` (`openscad` above rides a docker socat bridge to a TCP-only MCP).
-- If a token URL yields nothing, the server is still added **without** an auth header and a warning lands in the add-on log — a LAN server may legitimately not need auth.
+- **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout`.
+- **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `openscad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
+- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log — a LAN server may legitimately not need auth.
 
 **Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
 
