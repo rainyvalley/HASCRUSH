@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — all your Ollama (or third-party) models at your fingertips, with optional MCP support for third-party tie-ins
-version: "1.0.22"
+version: "1.0.23"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASSCharm
 arch:
@@ -38,7 +38,8 @@ options:
   crush_deep_model: "ollama-cloud/glm-5.3"
   crush_reasoning_effort: "high"
   ollama_key_url: ""     # optional: HTTP URL fetching OLLAMA_API_KEY=...
-  mcp_servers: ""         # ALL MCP servers incl. mem0 - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20}
+  disti_token: ""        # optional: X-Disti-Token header for token-gated secret-file fetches (crush disti)
+  mcp_servers: ""         # ALL MCP servers incl. mem0 - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20} - optional JSON array; e.g. [{"name":"mem0","url":"http://<host>:8300/mcp","token_url":"http://<host>/mem0-mcp.token"}] or stdio {"name":"openscad","command":"docker","args":["..."],"timeout":20}
   ollama_api_key: ""
   terminal_font_size: 14
   terminal_theme: dark
@@ -58,6 +59,7 @@ schema:
   crush_deep_model: str?
   crush_reasoning_effort: list(low|high|max)?
   ollama_key_url: str?
+  disti_token: str?
   mcp_servers: str?
   ollama_api_key: str?
   terminal_font_size: int(10,24)

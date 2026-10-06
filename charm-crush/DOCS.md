@@ -49,6 +49,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
 | `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL). Same key the mem0 REST API uses when mem0 shares it |
 | `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
+| `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (mem0/vision/openscad token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
 | `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
