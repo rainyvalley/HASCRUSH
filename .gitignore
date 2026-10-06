@@ -1,0 +1,4 @@
+# Crush runtime state created by developing/testing the add-on on this host:
+# never snapshot these (could contain provider stores / session history).
+.local/
+.crush/

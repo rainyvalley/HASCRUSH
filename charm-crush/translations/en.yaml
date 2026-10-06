@@ -63,7 +63,11 @@ configuration:
       token_url also works; omit both for no auth header). Stdio form:
       {"name":"openscad","command":"docker","args":["run","--rm","-i",
       "--network","host","alpine/socat","STDIO","TCP:192.0.2.10:3010"],
-      "timeout":20}. Every token belongs on its own entry - there are no
+      "timeout":20} - note the TCP bridge is token-gated: the client's FIRST
+      stdin line must be the bridge token (mimic the bridge's auth-gate.sh;
+      a bare socat relay now gets closed after ~1s), so stdio entries need a
+      wrapper that prints the token before relaying. Every token belongs on
+      its own entry - there are no
       separate token fields anymore. Leave empty (or omit mem0) to disable
       the memory MCP; empty list = template servers as-is. Entries replace
       only their own server's line. Changes apply on add-on restart.

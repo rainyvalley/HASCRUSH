@@ -35,8 +35,9 @@ jobs:
         run: |
           bash -n charm-crush/rootfs/run.sh && echo 'run.sh syntax OK'
           # light shellcheck-like scan: unquoted expansions / suspicious patterns
+          # (eval is NOT whitelisted: run.sh never needs it, so any hit must fail)
           ! grep -nE '(^|[^"'"'"'])\$[A-Za-z_][A-Za-z0-9_]*[^}"]' charm-crush/rootfs/run.sh | \
-            grep -vE '\$\(|\$SUPERVISOR_TOKEN|eval' || true
+            grep -vE '\$\(|\$SUPERVISOR_TOKEN' || true
 
       - name: Secret scan
         run: |

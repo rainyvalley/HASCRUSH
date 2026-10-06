@@ -49,42 +49,54 @@ RUN apk add --no-cache \
     docker-cli \
     && update-ca-certificates
 
-# Install ttyd static binary (avoids libwebsockets issues on alpine)
+# Install ttyd static binary (avoids libwebsockets issues on alpine).
+# Supply-chain pin (2026-10-06): sha256 of the 1.7.7 release binaries is
+# recorded here and verified at build time — upstream publishes no checksum
+# files, so the hashes were captured over a verified TLS fetch on 2026-10-06
+# and committed. Updating ttyd = bump the version URL + BOTH hashes together.
 ARG BUILD_ARCH
+ARG TTYD_SHA256_X86_64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
+ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
 RUN case "${BUILD_ARCH}" in \
-        amd64) TTYD_ARCH="x86_64" ;; \
-        aarch64) TTYD_ARCH="aarch64" ;; \
-        *) TTYD_ARCH="x86_64" ;; \
+        amd64) TTYD_ARCH="x86_64"; TTYD_SHA256="${TTYD_SHA256_X86_64}" ;; \
+        aarch64) TTYD_ARCH="aarch64"; TTYD_SHA256="${TTYD_SHA256_AARCH64}" ;; \
+        *) TTYD_ARCH="x86_64"; TTYD_SHA256="${TTYD_SHA256_X86_64}" ;; \
     esac && \
     curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
         "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${TTYD_ARCH}" -o /usr/bin/ttyd && \
+    echo "${TTYD_SHA256}  /usr/bin/ttyd" | sha256sum -c - && \
     chmod +x /usr/bin/ttyd
 
-# Install Crush. Resolve the current version from GitHub releases and verify the
-# binary runs a smoke test before trusting it; if the newest release fails on
-# this base, fall back to a known-good pinned release rather than failing the
-# whole build.
+# Install Crush. Pinned to a fixed release (supply-chain, 2026-10-06): the
+# version no longer auto-resolves to "latest" — updates are explicit ARG
+# bump commits (the auto_update_crush add-on option remains the runtime path
+# for newer versions). The tarball is verified against the release's own
+# checksums.txt before extraction; a failed/corrupted download FAILS the
+# build instead of silently falling back to a different version.
 # Asset naming (verified against v0.97.1): crush_<ver>_Linux_<arch>.tar.gz with
 # the binary at crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine
 # packages (arch names x86_64/aarch64) — an alternative install path.
+ARG CRUSH_VERSION=0.97.1
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
         amd64) CRUSH_ARCH="x86_64" ;; \
         aarch64) CRUSH_ARCH="arm64" ;; \
-        *) echo "[WARN] no crush binary published for ${BUILD_ARCH}"; exit 1 ;; \
+        *) echo "[FATAL] no crush binary published for ${BUILD_ARCH}"; exit 1 ;; \
     esac; \
-    CRUSH_VER="$(curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-        https://api.github.com/repos/charmbracelet/crush/releases/latest \
-        | jq -r .tag_name | tr -d v)"; \
-    if [ -z "$CRUSH_VER" ] || [ "$CRUSH_VER" = "null" ]; then CRUSH_VER="0.97.1"; fi; \
     curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-        "https://github.com/charmbracelet/crush/releases/download/v${CRUSH_VER}/crush_${CRUSH_VER}_Linux_${CRUSH_ARCH}.tar.gz" \
-        -o /tmp/crush.tar.gz || { echo "[WARN] release download failed; trying pinned 0.97.1"; CRUSH_VER="0.97.1"; \
-        curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
-        "https://github.com/charmbracelet/crush/releases/download/v0.97.1/crush_0.97.1_Linux_${CRUSH_ARCH}.tar.gz" -o /tmp/crush.tar.gz; }; \
+        "https://github.com/charmbracelet/crush/releases/download/v${CRUSH_VERSION}/crush_${CRUSH_VERSION}_Linux_${CRUSH_ARCH}.tar.gz" \
+        -o /tmp/crush.tar.gz; \
+    curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+        "https://github.com/charmbracelet/crush/releases/download/v${CRUSH_VERSION}/checksums.txt" \
+        -o /tmp/crush.sum; \
+    EXPECTED="$(awk -v f="crush_${CRUSH_VERSION}_Linux_${CRUSH_ARCH}.tar.gz" '$2 == f {print $1}' /tmp/crush.sum | head -n 1)"; \
+    # NB: exact-second-field match — a plain substring grep would also match the
+    # sig line (crush_..._tar.gz.sig) and feed sha256sum two hashes at once.
+    [ -n "$EXPECTED" ] || { echo "[FATAL] no checksum entry for the pinned tarball in checksums.txt"; exit 1; }; \
+    echo "$EXPECTED  /tmp/crush.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/crush.tar.gz -C /tmp; \
-    mv "/tmp/crush_${CRUSH_VER}_Linux_${CRUSH_ARCH}/crush" /usr/local/bin/crush; \
-    chmod +x /usr/local/bin/crush; rm -rf /tmp/crush.tar.gz /tmp/crush_*_Linux_*; \
+    mv "/tmp/crush_${CRUSH_VERSION}_Linux_${CRUSH_ARCH}/crush" /usr/local/bin/crush; \
+    chmod +x /usr/local/bin/crush; rm -rf /tmp/crush.tar.gz /tmp/crush.sum /tmp/crush_*_Linux_*; \
     crush --version < /dev/null | tee /etc/crush-version
 
 # Home Assistant CLI (ha command) - pinned and retried; upstream publishes only
