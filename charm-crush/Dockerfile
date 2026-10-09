@@ -107,24 +107,26 @@ RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
         -o /usr/local/bin/ha && \
     chmod +x /usr/local/bin/ha
 
-# Shell and tmux config (COPY works on every builder; heredocs need BuildKit)
-COPY rootfs/root/.bashrc /root/.bashrc
-COPY rootfs/root/.tmux.conf /root/.tmux.conf
+# Shell and tmux config (COPY works on every builder; heredocs need BuildKit).
+# Startup is a separate run.sh so crushrc/CRUSH.md/templates stay readable
+# (an inline CMD heredoc needs BuildKit and is unreadable in git diffs).
+COPY rootfs/root/.bashrc rootfs/root/.tmux.conf /root/
+COPY rootfs/run.sh /usr/local/bin/run.sh
 
-# Bash login shells source .profile too
-RUN echo 'source ~/.bashrc' > /root/.profile
+# Bash login shells source .profile too; run.sh ships 644 from git, so its
+# exec bit is set here instead of in a dedicated RUN layer
+RUN echo 'source ~/.bashrc' > /root/.profile && chmod +x /usr/local/bin/run.sh
 
 # Local bin on PATH
 ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /homeassistant
 
-# ttyd answers on 7681 or the add-on isn't serving the panel
+# ttyd answers on 7681 or the add-on isn't serving the panel. The check must
+# send the X-Hass-Source header HA core ingress always injects (run.sh gates
+# ttyd on it to block direct LAN :7681 access) or this probe would get 407
+# and the add-on would be flagged unhealthy even though the panel works.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:7681/ || exit 1
+    CMD curl -sf -H 'X-Hass-Source: core.ingress' http://localhost:7681/ || exit 1
 
-# Startup is a separate run.sh so crushrc/CRUSH.md/templates stay readable
-# (an inline CMD heredoc needs BuildKit and is unreadable in git diffs).
-COPY rootfs/run.sh /usr/local/bin/run.sh
-RUN chmod +x /usr/local/bin/run.sh
 CMD ["/usr/local/bin/run.sh"]

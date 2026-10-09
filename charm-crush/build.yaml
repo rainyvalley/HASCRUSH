@@ -2,7 +2,7 @@ build_from:
   amd64: ghcr.io/home-assistant/amd64-base:3.21
   aarch64: ghcr.io/home-assistant/aarch64-base:3.21
 labels:
-  org.opencontainers.image.title: "Crush for Home Assistant"
+  org.opencontainers.image.title: "HASSCrush — Crush for Home Assistant"
   org.opencontainers.image.description: "Charm Crush CLI with web terminal, your own Ollama (or third-party) models, and optional MCP tie-ins"
   org.opencontainers.image.source: "https://github.com/rainyvalley/HASCRUSH"
   org.opencontainers.image.licenses: "MIT"
