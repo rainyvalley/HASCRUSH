@@ -296,6 +296,9 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
   it serves a live shell over the add-on's port and is **only reachable through HA ingress** —
   HA's own authentication is the boundary in front of it, and it is never published directly.
+  Since 1.0.27 direct `:7681` traffic is additionally header-gated (`--auth-header X-Hass-Source`,
+  stamped by HA ingress) — that is an origin check, not user authentication: anything inside the
+  LAN that can send that header (e.g. a user with shell access on the host) is not stopped by it.
 - API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
   and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
