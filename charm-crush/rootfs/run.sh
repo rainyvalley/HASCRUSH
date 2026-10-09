@@ -496,11 +496,21 @@ mcp_remove() {
   # means "the PREVIOUS line was part of the entry", so a line is swallowed
   # exactly then; the swallow state continues only past lines ending in '\'.
   _mcp_swallow=0
-  while IFS= read -r _mcp_line; do
+  # the `|| [ -n ... ]` guard: bash read returns nonzero on a final line with
+  # no trailing newline and the while body would silently DROP it - a crushrc
+  # whose last line is `fi` (the central template ends without \n) would lose
+  # it on every pass and leave a dangling `if` ("if' statement must end with
+  # fi" at crush config load)
+  while IFS= read -r _mcp_line || [ -n "$_mcp_line" ]; do
     # tolerate CRLF and trailing whitespace after a continuation backslash
     _mcp_line="${_mcp_line%$CR}"; _mcp_line="${_mcp_line%%[[:space:]]}"
     if [ "$_mcp_swallow" = "0" ]; then
-      case "$_mcp_line" in
+      # match a leading-whitespace-stripped copy: template entries inside an
+      # `if` block are indented, and raw-line [[:space:]] glob arms are
+      # unreliable against them (matching on the raw line either missed the
+      # entry and left a duplicate, or ate the head as an "orphan fragment")
+      _mcp_stripped="${_mcp_line#"${_mcp_line%%[![:space:]]*}"}"
+      case "$_mcp_stripped" in
         "mcp add $1 "*|"mcp add $1")
           # first line of the entry: swallow it; continue swallowing while
           # it ends with backslash (multi-line entry)
@@ -533,17 +543,29 @@ mcp_sanitize() {
   # line ended with a continuation backslash
   _mcp_sz_open=0
   _mcp_sz_prev_bs=0
-  while IFS= read -r _mcp_line; do
+  # the `|| [ -n ... ]` guard: bash read returns nonzero on a final line with
+  # no trailing newline and the while body would silently DROP it - a crushrc
+  # whose last line is `fi` (the central template ends without \n) would lose
+  # it on every pass and leave a dangling `if` ("if' statement must end with
+  # fi" at crush config load)
+  while IFS= read -r _mcp_line || [ -n "$_mcp_line" ]; do
     # tolerate '\r' (CRLF-persisted rcs) before matching
     _mcp_line="${_mcp_line%$CR}"
-    case "$_mcp_line" in
+    # match a leading-whitespace-stripped copy: indented entries (e.g. a
+    # template entry inside an `if` block) are still mcp add heads, and
+    # raw-line [[:space:]] glob arms are unreliable against them - an
+    # indented `mcp add ollama ... --args ...` head once matched the
+    # fragment arms and was deleted as an "orphan", unregistering the
+    # guarded entry. Original indentation is preserved in the output.
+    _mcp_stripped="${_mcp_line#"${_mcp_line%%[![:space:]]*}"}"
+    case "$_mcp_stripped" in
       "mcp add "*)
         _mcp_sz_open=1
         _mcp_sz_prev_bs=0
         printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
         ;;
-      [[:space:]]*"--args "*|[[:space:]]*"--command "*|[[:space:]]*"--timeout "*|\
-[[:space:]]*"--header "*|[[:space:]]*"--url "*|[[:space:]]*"--env "*)
+      "--args "*|"--command "*|"--timeout "*|\
+"--header "*|"--url "*|"--env "*)
         # mcp-exclusive flag fragment: kept ONLY while an mcp add chain is
         # open (normal multi-line entry); with NO open head it is an orphan
         # from a pre-1.0.14 single-line delete -> drop it
