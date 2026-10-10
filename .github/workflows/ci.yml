@@ -34,10 +34,8 @@ jobs:
       - name: Shell-check run.sh
         run: |
           bash -n charm-crush/rootfs/run.sh && echo 'run.sh syntax OK'
-          # light shellcheck-like scan: unquoted expansions / suspicious patterns
-          # (eval is NOT whitelisted: run.sh never needs it, so any hit must fail)
-          ! grep -nE '(^|[^"'"'"'])\$[A-Za-z_][A-Za-z0-9_]*[^}"]' charm-crush/rootfs/run.sh | \
-            grep -vE '\$\(|\$SUPERVISOR_TOKEN' || true
+          # (the old grep heuristic is gone: its trailing || true could never
+          # fail the step - if a lint gate is wanted, run shellcheck instead)
 
       - name: Secret scan
         run: |

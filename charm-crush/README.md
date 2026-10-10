@@ -9,7 +9,6 @@ the repo root [README.md](../README.md).
 
 - `config.yaml` — add-on definition (options + schema)
 - `Dockerfile`, `rootfs/run.sh` — build + startup
-- `apparmor.txt` — permission profile
 - `DOCS.md` — full usage documentation
 - `icon.png` / `logo.png` — icons
 - `translations/en.yaml` — options UI labels
