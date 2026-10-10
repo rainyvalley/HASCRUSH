@@ -66,10 +66,12 @@ jobs:
           HADOLINT_VERSION=2.12.0
           curl -fsSL --retry 5 -o /tmp/hadolint \
             "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
-          # verify against the release checksums.txt before running the binary
-          curl -fsSL --retry 5 -o /tmp/hadolint-sums \
-            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/checksums.txt"
-          EXPECTED=$(awk -v f='hadolint-Linux-x86_64' '$2 == f {print $1; exit}' /tmp/hadolint-sums)
+          # verify against the release's per-asset .sha256 before running the
+          # binary (this release has no checksums.txt; each asset has its own
+          # <asset>.sha256 containing "<hash>  <asset>")
+          curl -fsSL --retry 5 -o /tmp/hadolint.sha256 \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64.sha256"
+          EXPECTED=$(awk '{print $1}' /tmp/hadolint.sha256)
           [ -n "$EXPECTED" ] || { echo 'no checksum entry for hadolint-Linux-x86_64'; exit 1; }
           echo "${EXPECTED}  /tmp/hadolint" | sha256sum -c - || exit 1
           chmod +x /tmp/hadolint
@@ -79,11 +81,12 @@ jobs:
       - name: actionlint (workflow)
         run: |
           ACTIONLINT_VERSION=1.7.7
-          # upstream publishes checksums.txt; same verify-before-run pattern
+          # upstream publishes actionlint_<ver>_checksums.txt (version-prefixed
+          # name); same verify-before-run pattern as the hadolint step above
           curl -fsSL --retry 5 -o /tmp/actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           curl -fsSL --retry 5 -o /tmp/actionlint-sums \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/checksums.txt"
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
           WANT="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           EXPECTED=$(awk -v f="$WANT" '$2 == f {print $1; exit}' /tmp/actionlint-sums)
           [ -n "$EXPECTED" ] || { echo "no checksum entry for ${WANT}"; exit 1; }
