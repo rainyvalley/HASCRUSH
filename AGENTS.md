@@ -49,6 +49,13 @@ Local CI validation needs `pyyaml` (pip install).
 
 Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.0.1) in the same commit. Recent commit subjects are `feature summary; bump 1.0.12` style. HA add-ons won't update without a version bump, so never commit a change to `config.yaml`/`run.sh`/`Dockerfile` without one.
 
+**A number that has already shipped doesn't count again.** Supervisor compares the version *string* and nothing else — tree contents, commit dates and file hashes are all invisible to it. So a merge, rebase or fast-forward carrying several commits releases every one of them under whichever number the last bumping commit set, and any commit landing after that without its own bump is permanently unreachable: the store and the install both read the same number, no delta is offered, and no amount of store reloading or repository re-adding can surface it. That is exactly how 1.0.28 failed — `c5e1dac` bumped to it, then `b7354c7` (run.sh option handling + the `mcp_servers` loop) and `051733a` landed unbumped on top, so installs built from any of those three trees reported 1.0.28 and the two later run.sh fixes could not be delivered at all; only `01fcace` (bumping to 1.0.29) did. Sanity check before pushing — the `config.yaml` line must be the *newer* of the two; if `run.sh` names a commit that came after it, the version is stale:
+
+```bash
+git log --oneline -1 -- charm-crush/config.yaml    # last bump
+git log --oneline -1 -- charm-crush/rootfs/run.sh  # last run.sh change
+```
+
 ## How the add-on works (control flow at start)
 
 `s6-overlay` (pid 1, from the HA base image) runs `rootfs/run.sh` which, in order:
