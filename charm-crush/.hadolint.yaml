@@ -1,0 +1,22 @@
+# hadolint config for the charm-crush add-on image.
+# Each ignore is justified here so a future reviewer can re-evaluate instead
+# of silently inheriting the waiver.
+ignored:
+  # BUILD_FROM is passed as a build-arg by the HA add-on builder
+  # (build.yaml: BUILD_FROM) and is already pinned there per-arch to
+  # ghcr.io/home-assistant/<arch>-base:<tag> - hadolint cannot see the
+  # build-arg value, so this warning is a false positive for HA add-ons.
+  - DL3006
+  # apk packages are not version-pinned intentionally: the HA base image
+  # (ghcr.io/home-assistant/<arch>-base) is itself rebuilt by upstream on a
+  # rolling basis, so <pkg>=<ver> pins break regularly, and per-HA-add-on
+  # convention the base image provides the version surface. The binaries that
+  # actually matter (ttyd, crush, ha) ARE pinned and checksum-verified in
+  # their RUN layers.
+  - DL3018
+  # Alpine/busybox sh does not support the SHELL instruction's pipefail form;
+  # the piped RUNs below were audited and every pipe is to a command that
+  # cannot mask the left side's failure (awk extraction that is
+  # fail-closed via [ -n "$EXPECTED" ], or cosmetic tee/echo). Adding a
+  # `SHELL ["/bin/ash", "-o", "pipefail", "-c"]` directive breaks on busybox.
+  - DL4006

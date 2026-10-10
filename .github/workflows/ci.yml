@@ -3,16 +3,28 @@ name: CI
 on:
   push:
     branches: [main]
-    paths: ['charm-crush/**', '.github/workflows/ci.yml']
+    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml']
   pull_request:
-    paths: ['charm-crush/**', '.github/workflows/ci.yml']
+    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml']
   workflow_dispatch:
+
+# A newer push to the same ref supersedes the in-flight run: the older run's
+# verdict is uninteresting (the code moved on) and QEMU builds are slow enough
+# to make queueing them pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # the version-recency gate needs full history (%ct per file);
+          # the token is not used - push rights stay with the local runner
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate YAML (config, build, translations)
         run: |
@@ -31,18 +43,102 @@ jobs:
           print('schema + translations complete')
           EOF
 
-      - name: Shell-check run.sh
+      - name: Shellcheck run.sh + lib.sh
         run: |
-          bash -n charm-crush/rootfs/run.sh && echo 'run.sh syntax OK'
-          # (the old grep heuristic is gone: its trailing || true could never
-          # fail the step - if a lint gate is wanted, run shellcheck instead)
+          bash -n charm-crush/rootfs/run.sh && bash -n charm-crush/rootfs/lib.sh && echo 'bash -n OK (run.sh + lib.sh)'
+          # -S error: only actual shellcheck ERRORS fail the step. The remaining
+          # warn/info findings in these files are pre-existing style notes on
+          # code paths that work (SC2086 etc.) - see the advisory report step;
+          # fix findings at their occurrences, never with a global disable.
+          shellcheck -S error charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh
+
+      - name: Full shellcheck report (advisory)
+        continue-on-error: true
+        run: shellcheck charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh || true
+
+      - name: bats unit tests (lib.sh helpers)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq bats
+          bats tests/
+
+      - name: hadolint (Dockerfile)
+        run: |
+          HADOLINT_VERSION=2.12.0
+          curl -fsSL --retry 5 -o /tmp/hadolint \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+          # verify against the release checksums.txt before running the binary
+          curl -fsSL --retry 5 -o /tmp/hadolint-sums \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/checksums.txt"
+          EXPECTED=$(awk -v f='hadolint-Linux-x86_64' '$2 == f {print $1; exit}' /tmp/hadolint-sums)
+          [ -n "$EXPECTED" ] || { echo 'no checksum entry for hadolint-Linux-x86_64'; exit 1; }
+          echo "${EXPECTED}  /tmp/hadolint" | sha256sum -c - || exit 1
+          chmod +x /tmp/hadolint
+          # the .hadolint.yaml documents (and justifies) the three waived rules
+          /tmp/hadolint --config charm-crush/.hadolint.yaml charm-crush/Dockerfile
+
+      - name: actionlint (workflow)
+        run: |
+          ACTIONLINT_VERSION=1.7.7
+          # upstream publishes checksums.txt; same verify-before-run pattern
+          curl -fsSL --retry 5 -o /tmp/actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 5 -o /tmp/actionlint-sums \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/checksums.txt"
+          WANT="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          EXPECTED=$(awk -v f="$WANT" '$2 == f {print $1; exit}' /tmp/actionlint-sums)
+          [ -n "$EXPECTED" ] || { echo "no checksum entry for ${WANT}"; exit 1; }
+          echo "${EXPECTED}  /tmp/actionlint.tar.gz" | sha256sum -c - || exit 1
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint && chmod +x /tmp/actionlint
+          /tmp/actionlint -color
+
+      - name: Version-bump recency gate (the 1.0.28/1.0.29 trap)
+        run: |
+          # Trap this gate encodes: 1.0.28/1.0.29 committed run.sh changes AFTER
+          # the config.yaml version-bump commit and never bumped again. The
+          # Supervisor compares the config.yaml version string against the
+          # installed add-on's version - with the string unchanged it refuses
+          # to update, so the newer run.sh was unreachable from the add-on
+          # (invisible in CI, a stale image shipped silently).
+          # Rule: run.sh / lib.sh / Dockerfile must not have a commit newer
+          # than the last config.yaml commit. A legit code change therefore
+          # bumps config.yaml last (same-release bump commit is fine: equal
+          # timestamps pass). Translations/DOCS-only commits never touch these
+          # files, so translations-only bumps naturally pass without a bump.
+          cfg_ts=$(git log -1 --format=%ct -- charm-crush/config.yaml)
+          [ -n "$cfg_ts" ] || { echo '::error::config.yaml has no commit - cannot run the recency gate'; exit 1; }
+          rc=0
+          for f in charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh charm-crush/Dockerfile; do
+            f_ts=$(git log -1 --format=%ct -- "$f")
+            if [ "$f_ts" -gt "$cfg_ts" ]; then
+              echo "::error::${f} has a commit NEWER than the last config.yaml commit (the 1.0.28/29 trap: that change is unreachable - the Supervisor sees an unchanged version string and skips the update). Bump config.yaml's version again, or amend/rebase the change before the bump commit if the release has not shipped."
+              rc=1
+            fi
+          done
+          exit $rc
+
+      - name: Official add-on validation (frenck action-app-linter)
+        uses: frenck/action-app-linter@v2.21.1
+        with:
+          path: ./charm-crush
+        # Supplement to the completeness check above, not a replacement: this
+        # runs the canonical hassio add-on lint rules (the community devtools
+        # image ghcr.io/home-assistant/*-devtools was retired, and
+        # frenck/action-addon was renamed action-app-linter in 2024).
 
       - name: Secret scan
         run: |
-          # nothing that looks like a real key may be committed
-          ! grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.0\.2\.252|dev@' \
-            --include='*.sh' --include='*.yaml' --include='*.yml' --exclude-dir=.github . || {
-            echo 'Secret-looking strings found:'; grep -rniE 'sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.0\.2\.252|dev@' --exclude-dir=.github . ; exit 1; }
+          # nothing that looks like a real key, token or private address may be
+          # committed anywhere (docs, tests, lockfiles included); .github is
+          # excluded - the scanner cannot scan its own patterns
+          PAT='sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.0\.2\.252|dev@'
+          ! grep -rniE "$PAT" \
+            --include='*.sh' --include='*.bats' --include='*.yaml' --include='*.yml' \
+            --include='*.md' --include='*.toml' --include='*.json' \
+            --exclude-dir=.git --exclude-dir=.github . || {
+            echo 'Secret-looking strings found:'; grep -rniE "$PAT" \
+              --include='*.sh' --include='*.bats' --include='*.yaml' --include='*.yml' \
+              --include='*.md' --include='*.toml' --include='*.json' \
+              --exclude-dir=.git --exclude-dir=.github . ; exit 1; }
           echo 'no secrets'
 
   build:
@@ -57,6 +153,22 @@ jobs:
       - name: Set up QEMU (arm64 emulation)
         uses: docker/setup-qemu-action@v3
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve BUILD_FROM from build.yaml
+        id: buildfrom
+        run: |
+          arch=${{ matrix.arch }}
+          # the base image is build.yaml's truth, not this workflow's
+          from="$(sed -n "/^build_from:/,/^labels:/ s/^  ${arch}: *//p" charm-crush/build.yaml | sed 's/"//g')"
+          if [ -z "$from" ]; then
+            # loud fallback: pinned base of record before this was derived
+            from=ghcr.io/home-assistant/${arch}-base:3.21
+            echo "::warning::build.yaml has no build_from.${arch} entry - falling back to ${from}. Fix build.yaml."
+          fi
+          echo "from=${from}" >> "$GITHUB_OUTPUT"
+
       - name: Build (${{ matrix.arch }})
         run: |
           arch=${{ matrix.arch }}
@@ -64,10 +176,12 @@ jobs:
             amd64) BUILD_ARCH=amd64; PLATFORM=linux/amd64 ;;
             aarch64) BUILD_ARCH=aarch64; PLATFORM=linux/arm64 ;;
           esac
-          docker buildx build --platform $PLATFORM --load \
-            --build-arg BUILD_FROM=ghcr.io/home-assistant/${arch}-base:3.21 \
-            --build-arg BUILD_ARCH=$BUILD_ARCH \
-            -t charm-crush:$arch charm-crush/
+          docker buildx build --platform "$PLATFORM" --load \
+            --build-arg BUILD_FROM="${{ steps.buildfrom.outputs.from }}" \
+            --build-arg BUILD_ARCH="$BUILD_ARCH" \
+            --cache-from type=gha,mode=max,scope=build-${{ matrix.arch }} \
+            --cache-to type=gha,mode=max,scope=build-${{ matrix.arch }} \
+            -t "charm-crush:$arch" charm-crush/
 
       - name: Smoke test binaries
         run: |
@@ -77,3 +191,58 @@ jobs:
             ha --help 2>&1 | grep -q . || { echo "ha broken"; exit 1; }
             bash -n /usr/local/bin/run.sh || { echo "run.sh broken"; exit 1; }
             echo "binaries OK"'
+
+      - name: Boot-surface smoke test (third_party + mcp_servers)
+        run: |
+          # Boots the built image the way the Supervisor would: stubs the
+          # /data/options.json the boot actually reads (third_party provider,
+          # one mcp_servers http entry with an inline token), waits for the
+          # boot log markers, then asserts on the GENERATED crushrc - not on
+          # the template - so the add-on's own surgery (remap, token plumbing)
+          # is what is tested. Values are RFC 5737 doc addresses; no real
+          # network is contacted (run.sh's network calls are optional,
+          # fail-fast fetches with --max-time).
+          work=$(mktemp -d)
+          printf '%s\n' \
+            '{"provider":"third_party",' \
+            ' "third_party_base_url":"http://test.invalid:9000/v1",' \
+            ' "third_party_api_key":"smoke-key-not-real",' \
+            ' "mcp_servers":[{"name":"mem0","url":"http://test.invalid:8300/mcp","token":"smoke-token-not-real"}]}' \
+            > "$work/options.json"
+          mkdir -p "$work/data"
+          cp "$work/options.json" "$work/data/options.json"
+          docker run -d --name boot-smoke -e SUPERVISOR_TOKEN=smoke-supervisor-token \
+            -v "$work/data:/data" charm-crush:${{ matrix.arch }}
+          rc=0
+          for _ in $(seq 1 240); do
+            if docker logs boot-smoke 2>&1 | grep -q 'mcp_servers: 1 server(s) applied'; then break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' boot-smoke 2>/dev/null)" != true ]; then
+              echo '::error::container exited before the boot marker appeared'; docker logs boot-smoke 2>&1; rc=1; break
+            fi
+            sleep 2
+          done
+          if [ "$rc" = 0 ]; then
+            # NOTE: GitHub runs run-blocks under `set -e -o pipefail`, so every
+            # asserted condition is an `if` - a plain `cmd || { rc=1; }` would
+            # terminate the script on the FIRST failed check and skip the rest
+            # plus the container cleanup below.
+            docker logs boot-smoke 2>&1 | tee "$work/boot.log"
+            crushrc=$(docker exec boot-smoke cat /homeassistant/.crushdata/config/crush/crushrc)
+            fail() { echo "FAIL: $1"; rc=1; }
+            # 1) provider remap landed in the generated rc
+            if ! echo "$crushrc" | grep -q 'provider add openai-compat-3p'; then fail 'provider not remapped to openai-compat-3p'; fi
+            if echo "$crushrc" | grep -q 'provider add ollama-cloud'; then fail 'ollama-cloud still registered'; fi
+            if ! grep -q 'provider=third_party: models remapped' "$work/boot.log"; then fail 'remap log marker missing'; fi
+            # 2) the mcp entry was applied with its auth header referencing the
+            #    env token (double-quoted pattern has an escaped $ on purpose:
+            #    the crushrc must reference the token var, not inline it)
+            if ! echo "$crushrc" | grep -qF "mcp add mem0 --type http --url \"http://test.invalid:8300/mcp\""; then fail 'mem0 mcp entry not applied'; fi
+            if ! echo "$crushrc" | grep -qF "Bearer \$MCP_TOKEN_mem0"; then fail 'token not referenced via MCP_TOKEN_'; fi
+            # 3) the token/key must be REFERENCED via env, never INLINED, in
+            #    both the generated rc and the boot log
+            if echo "$crushrc" | grep -qF 'smoke-token-not-real'; then fail 'token inlined in crushrc'; fi
+            if echo "$crushrc" | grep -qF 'smoke-key-not-real'; then fail 'third-party key inlined in crushrc'; fi
+            if grep -qF 'smoke-token-not-real' "$work/boot.log"; then fail 'token leaked into the boot log'; fi
+          fi
+          docker rm -f boot-smoke >/dev/null 2>&1 || true
+          exit $rc

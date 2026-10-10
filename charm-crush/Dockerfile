@@ -109,7 +109,10 @@ RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
 # Startup is a separate run.sh so crushrc/CRUSH.md/templates stay readable
 # (an inline CMD heredoc needs BuildKit and is unreadable in git diffs).
 COPY rootfs/root/.bashrc rootfs/root/.tmux.conf /root/
-COPY rootfs/run.sh /usr/local/bin/run.sh
+# run.sh sources lib.sh (pure helpers, see its header) relative to its own
+# location, so both land in /usr/local/bin; lib.sh stays 644 - it is sourced,
+# never executed.
+COPY rootfs/run.sh rootfs/lib.sh /usr/local/bin/
 
 # Bash login shells source .profile too; run.sh ships 644 from git, so its
 # exec bit is set here instead of in a dedicated RUN layer
