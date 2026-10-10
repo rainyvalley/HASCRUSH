@@ -20,8 +20,7 @@ ENV \
     S6_KEEP_ENV=1
 
 # System dependencies (ttyd installed separately as a static binary below;
-# gnupg + ca-certificates are needed by the charm apt-repo bootstrap on debian
-# bases, and are harmless no-ops on alpine bases which get the static binary).
+# ca-certificates pins the CA set for curl).
 RUN apk add --no-cache \
     bash \
     curl \
@@ -43,7 +42,6 @@ RUN apk add --no-cache \
     ca-certificates \
     openssl \
     ripgrep \
-    gnupg \
     p7zip \
     socat \
     docker-cli \
@@ -116,9 +114,6 @@ COPY rootfs/run.sh /usr/local/bin/run.sh
 # Bash login shells source .profile too; run.sh ships 644 from git, so its
 # exec bit is set here instead of in a dedicated RUN layer
 RUN echo 'source ~/.bashrc' > /root/.profile && chmod +x /usr/local/bin/run.sh
-
-# Local bin on PATH
-ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /homeassistant
 
