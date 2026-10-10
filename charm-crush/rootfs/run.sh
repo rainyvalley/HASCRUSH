@@ -408,7 +408,7 @@ fi
 # `model add` entries win on conflicts. false disables it everywhere (fetched
 # templates included); true only ever touches the add-on's own fallback rc -
 # a fetched template stays exactly what its author served.
-DISCOVER_MODELS="${CRUSH_DISCOVER_MODELS:-$(jq -r '.crush_discover_models // true' /data/options.json)}"
+DISCOVER_MODELS="${CRUSH_DISCOVER_MODELS:-$(jq -r 'if .crush_discover_models == null then true else .crush_discover_models end' /data/options.json)}"
 case "$DISCOVER_MODELS" in false|0|no) DISCOVER_MODELS=false ;; *) DISCOVER_MODELS=true ;; esac
 if [ "$DISCOVER_MODELS" = false ]; then
   sed -i 's/--discover-models true/--discover-models false/g' "$crushrc"
@@ -636,6 +636,7 @@ mcp_token_fetch() {
 # Empty/unset or INVALID JSON = no changes; template lines stay authoritative
 # - including a template's mem0 line for crush_config_url users.
 MCP_JSON="${MCP_SERVERS:-$(jq -r '.mcp_servers // "[]"' /data/options.json 2>/dev/null)}"
+MCP_JSON="${MCP_JSON:-[]}"   # the add-on's default mcp_servers option is "", not a JSON array
 mcp_sanitize
 # one validity check shared by the three uses below (loop, invalid-JSON warn,
 # legacy mem0 scan): did jq parse the text as a JSON array?
@@ -644,10 +645,10 @@ if echo "$MCP_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
   MCP_JSON_VALID=1
 fi
 if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
-  MCP_COUNT=$(echo "$MCP_JSON" | jq 'length')
+  MCP_COUNT=0
   _mcp_idx=0
-  while [ "$_mcp_idx" -lt "$MCP_COUNT" ]; do
-    MCP_ENTRY=$(echo "$MCP_JSON" | jq -c ".[$_mcp_idx]")
+  while IFS= read -r MCP_ENTRY; do
+    MCP_COUNT=$((MCP_COUNT + 1))
     _mcp_idx=$((_mcp_idx + 1))
     MCP_NAME=$(echo "$MCP_ENTRY" | jq -r '.name // ""' | tr -d '\r\n ')
     MCP_URL=$(echo "$MCP_ENTRY" | jq -r '.url // ""' | tr -d '\r\n')
@@ -665,10 +666,15 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     val_check "$MCP_URL" safe_url "mcp_servers '$MCP_NAME': url failed charset validation (http/https + URL-safe chars only) - skipped" || continue
     val_check "$MCP_CMD" safe_text "mcp_servers '$MCP_NAME': command failed charset validation (shell metachars not allowed) - skipped" || continue
     mcp_remove "$MCP_NAME"
+    if [ -z "$MCP_URL" ] && [ -z "$MCP_CMD" ]; then
+      echo "[addon][WARN] mcp_servers '$MCP_NAME': neither url nor command set - skipped"
+      continue
+    fi
+    # token/token_url resolve once here, identically for http and stdio
+    MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
+    MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
+    mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
     if [ -n "$MCP_URL" ]; then
-      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
-      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
-      mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
       if [ -n "$MCP_TOK" ]; then
         export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
         printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $MCP_TOKEN_%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_NAME" >> "$crushrc"
@@ -678,7 +684,7 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         printf 'mcp add %s --type http --url "%s"\n' "$MCP_NAME" "$MCP_URL" >> "$crushrc"
         [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added without auth header"
       fi
-    elif [ -n "$MCP_CMD" ]; then
+    else
       # stdio entries may ALSO carry token/token_url exactly like http
       # entries. When a token resolves, the entry is emitted as a sh -c
       # gate-pipe: the token goes out as the FIRST stdin line, then the
@@ -690,9 +696,6 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
       # (socat) must already be IN the image. The token is still only
       # REFERENCED in the rc ($MCP_TOKEN_<name>, exported just below) -
       # never inlined (since 1.0.25).
-      MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
-      MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
-      mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
       MCP_ARGS_LINE=""
       # gate wrapper body (sh code run by `sh -c`): each command word gets a
       # double quote so a value with spaces stays one argv element. safe_text
@@ -746,10 +749,8 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
       fi
       [ -n "$MCP_TIMEOUT" ] && MCP_RC="$MCP_RC --timeout $MCP_TIMEOUT"
       printf '%s\n' "$MCP_RC" >> "$crushrc"
-    else
-      echo "[addon][WARN] mcp_servers '$MCP_NAME': neither url nor command set - skipped"
     fi
-  done
+  done < <(echo "$MCP_JSON" | jq -c '.[]')
   echo "[addon] mcp_servers: $MCP_COUNT server(s) applied from options"
   # belt-and-braces: the merge runs AFTER the pre-merge sanitize, so any
   # half-line it could emit (a newline surviving the strips above would
@@ -797,10 +798,14 @@ apply_model_slot() {
     printf '\nmodel %s %s\n' "$1" "$2" >> "$crushrc"
   fi
 }
-LARGE_MODEL="${CRUSH_LARGE_MODEL:-$(jq -r '.crush_large_model // ""' /data/options.json)}"
-SMALL_MODEL="${CRUSH_SMALL_MODEL:-$(jq -r '.crush_small_model // ""' /data/options.json)}"
-DEEP_MODEL="${CRUSH_DEEP_MODEL:-$(jq -r '.crush_deep_model // ""' /data/options.json)}"
-EFFORT="${CRUSH_REASONING_EFFORT:-$(jq -r '.crush_reasoning_effort // ""' /data/options.json)}"
+# One jq spawn for all four slots (NUL-delimited so values - even ones with
+# newlines/quotes - stay intact and land in the right slot; env-wins
+# precedence preserved by the ${VAR:-} wrappers).
+mapfile -d '' -t -- _mopts < <(jq -rj '[(.crush_large_model // ""), (.crush_small_model // ""), (.crush_deep_model // ""), (.crush_reasoning_effort // "")] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+LARGE_MODEL="${CRUSH_LARGE_MODEL:-${_mopts[0]}}"
+SMALL_MODEL="${CRUSH_SMALL_MODEL:-${_mopts[1]}}"
+DEEP_MODEL="${CRUSH_DEEP_MODEL:-${_mopts[2]}}"
+EFFORT="${CRUSH_REASONING_EFFORT:-${_mopts[3]}}"
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
 # deep model: register if not already registered (escaped, busybox-safe grep)
@@ -907,15 +912,18 @@ if [ "$AUTO_UPDATE" = "true" ]; then
 fi
 
 # ── Web terminal ────────────────────────────────────────────────────────
-FONT_SIZE=$(jq -r '.terminal_font_size // 14' /data/options.json)
+# One jq spawn for the four terminal-web options (NUL-delimited, same pattern
+# as the model-slot read above).
+mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant")] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+FONT_SIZE="${_topts[0]}"
 # FONT_SIZE is spliced into an UNQUOTED -t token, so force it to digits: the
 # jq default only covers a missing key, not a string the operator (or anything
 # that can write /data/options.json) sets to shell metacharacters.
 case "$FONT_SIZE" in
   ""|*[!0-9]*) FONT_SIZE=14 ;;
 esac
-THEME=$(jq -r '.terminal_theme // "dark"' /data/options.json)
-SESSION_PERSIST=$(jq -r 'if .session_persistence == null then true else .session_persistence end' /data/options.json)
+THEME="${_topts[1]}"
+SESSION_PERSIST="${_topts[2]}"
 if [ "$THEME" = "dark" ]; then
   COLORS='background=#1e1e2e,foreground=#cdd6f4,cursor=#f5e0dc'
 else
@@ -926,7 +934,7 @@ if [ "$SESSION_PERSIST" = "true" ]; then
 else
   SHELL_CMD='bash --login'
 fi
-WORKDIR=$(jq -r '.working_directory // "/homeassistant"' /data/options.json)
+WORKDIR="${_topts[3]}"
 # Restrict the agent's cwd to the add-on's mapped roots (same list as DOCS.md).
 # Prefix-match alone can be bypassed with traversal (/homeassistant/../root),
 # so cd first, then verify the RESOLVED path (pwd -P) against the roots and
