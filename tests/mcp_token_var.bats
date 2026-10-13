@@ -25,3 +25,39 @@ load 'test_helper'
   line=$(printf '"Bearer $%s"' "$v")
   [ "$(eval "printf '%s' $line")" = "Bearer tok" ]
 }
+
+# ── collision detection: '-' and '_' both map to '_' ─────────────────────
+
+@test "distinct names map to distinct variables and both claim" {
+  mcp_token_claims_reset
+  mcp_token_claim mem0
+  mcp_token_claim home-assistant
+}
+
+@test "a-b and a_b collide on one variable: the second claim is rejected loudly" {
+  mcp_token_claims_reset
+  mcp_token_claim a-b
+  run mcp_token_claim a_b
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MCP_TOKEN_a_b"* ]]
+  [[ "$output" == *"'a_b'"* && "$output" == *"'a-b'"* ]]
+}
+
+@test "the collision is detected in either order" {
+  mcp_token_claims_reset
+  mcp_token_claim a_b
+  ! mcp_token_claim a-b 2>/dev/null
+}
+
+@test "the same name claimed twice is not a collision" {
+  mcp_token_claims_reset
+  mcp_token_claim a-b
+  mcp_token_claim a-b
+}
+
+@test "a reset forgets earlier claims" {
+  mcp_token_claims_reset
+  mcp_token_claim a-b
+  mcp_token_claims_reset
+  mcp_token_claim a_b
+}

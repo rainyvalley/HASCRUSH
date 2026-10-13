@@ -501,21 +501,15 @@ fi
 if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
   MCP_COUNT=0
   _mcp_idx=0
+  mcp_token_claims_reset
   while IFS= read -r MCP_ENTRY; do
     MCP_COUNT=$((MCP_COUNT + 1))
     _mcp_idx=$((_mcp_idx + 1))
-    # One jq spawn per entry for every field (NUL-delimited, same pattern as
-    # the model-slot read below) instead of one jq+tr pair per field and per
-    # arg. Layout: name url command token token_url timeout argsok args...;
-    # argsok is 0 when "args" is present but not an array. Embedded NULs are
-    # dropped so a value can never shift into the next field. The strips
-    # below match the old per-field `tr -d` sets exactly.
-    mapfile -d '' -t -- _mf < <(printf '%s' "$MCP_ENTRY" | jq -j '
-      [(.name // ""), (.url // ""), (.command // ""), (.token // ""),
-       (.token_url // ""), (.timeout // ""),
-       (if (.args // []) | type == "array" then 1 else 0 end)]
-      + (.args // [] | if type == "array" then . else [] end)
-      | .[] | (tostring | gsub("\u0000"; "")) + "\u0000"' 2>/dev/null)
+    # One jq spawn per entry for every field: mcp_parse_entry (lib.sh, unit-
+    # tested) fills _mf - name url command token token_url timeout argsok
+    # args... - with embedded NULs dropped. The strips below match the old
+    # per-field `tr -d` sets exactly.
+    mcp_parse_entry "$MCP_ENTRY"
     MCP_NAME=${_mf[0]//[$'\r\n ']/}
     MCP_URL=${_mf[1]//[$'\r\n']/}
     MCP_CMD=${_mf[2]//[$'\r\n']/}
@@ -541,6 +535,9 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     MCP_TOK_URL=${_mf[4]//[$'\r\n']/}
     mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
     MCP_TOKVAR=$(mcp_token_var "$MCP_NAME")   # '-' is legal in names, not in env vars (lib.sh)
+    # a-b and a_b map to the same variable: skip the later token-bearing entry
+    # rather than let its export overwrite the first server's token
+    if [ -n "$MCP_TOK" ]; then mcp_token_claim "$MCP_NAME" || continue; fi
     if [ -n "$MCP_URL" ]; then
       if [ -n "$MCP_TOK" ]; then
         export "${MCP_TOKVAR}=${MCP_TOK}"

@@ -48,14 +48,14 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local/vision models |
 | `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
 | `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL) |
-| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` |
-| `disti_token` | *(empty)* | Optional X-Disti-Token download credential for a token-gated crush disti; sent on key/token_url fetches. NOT an MCP bearer token |
+| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
+| `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (memory/vision/CAD token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
 | `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
 | `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
 | `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
-| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
+| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -107,7 +107,7 @@ model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 
 ## Memory (an MCP memory server)
 
-Memory is one entry in the `mcp_servers` JSON (see MCP servers section), not a separate field:
+Memory is one entry in the `mcp_servers` JSON (see the MCP servers section), not a separate field:
 
 | Want | Set |
 |---|---|
@@ -149,9 +149,11 @@ Entry forms:
 - **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`search`, `browser` above).
 - **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout`.
 - **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `cad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
-- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log.
+- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log. — a LAN server may legitimately not need auth.
 
-Secrets never land in the generated crushrc: resolved tokens are exported as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable.
+**Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
+
+Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable. Server names may contain `-`; env var names cannot, so `-` becomes `_` in the variable (`home-assistant` -> `MCP_TOKEN_home_assistant`). Two names that map to the same variable (`a-b` and `a_b`) collide: the later token-bearing entry is skipped with a warning in the add-on log - rename one of them.
 
 ## Central config (optional)
 

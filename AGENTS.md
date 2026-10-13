@@ -10,23 +10,33 @@ Home Assistant add-on repository: runs [Charm Crush](https://github.com/charmbra
 charm-crush/
   config.yaml      # add-on manifest: options + schema + security flags (version bumps here)
   build.yaml       # build image (HA base 3.21) + OCI labels
-  Dockerfile       # alpine-based image: ttyd static binary + crush from GH releases + ha CLI
-  rootfs/run.sh    # ALL startup logic (fetch config, keys, supervisor-token recovery, persistence, tmux+ttyd)
+  Dockerfile       # alpine-based image: ttyd + crush + ha CLI, each pinned and sha256-verified
+  rootfs/run.sh    # startup logic (fetch config, keys, supervisor-token recovery, persistence, tmux+ttyd)
+  rootfs/lib.sh    # pure helpers sourced by run.sh and by the bats suite (see below)
   rootfs/root/     # .bashrc / .tmux.conf copied into the image
-  translations/en.yaml  # Options-tab labels — CI asserts EVERY option has an entry
-  DOCS.md          # Documentation-tab content (mirrors README)
+  translations/en.yaml  # Options-tab labels - CI asserts EVERY option has an entry
+  DOCS.md          # Documentation-tab content (mirrors README.md; keep the two in sync)
+tests/             # bats unit suites for rootfs/lib.sh (+ test_helper.bash)
 repository.json    # HA add-on repository descriptor
 .github/workflows/ci.yml
 ```
 
-There is no compiled code and no test suite. The repo is: YAML manifests + one big shell script + one Dockerfile.
+`rootfs/lib.sh` holds everything that can be tested without a running add-on: string-or-file in, string-or-exit-code out, no network, no `/data` reads. It is copied next to `run.sh` in the image (`/usr/local/bin/lib.sh`) and sourced by it. Contents: the env-file grammar (`ENV_PAT`), charset validators (`safe_url`, `safe_text`, `val_check`), CRUSH.md guardrail injection, crushrc surgery (`mcp_remove`, `mcp_sanitize`), the `mcp_servers` entry parser (`mcp_parse_entry`), MCP token variable naming and collision detection (`mcp_token_var`, `mcp_token_claim`), model slot rewiring, and the third-party provider remap/reset. New logic that can be pure belongs in lib.sh with a bats test, not inline in run.sh.
+
+MCP token variables: each `mcp_servers` entry's token is exported as `MCP_TOKEN_<name>` with `-` mapped to `_` (`home-assistant` -> `MCP_TOKEN_home_assistant`). Names that map to the same variable (`a-b` / `a_b`) collide; the later token-bearing entry is skipped with a warning.
+
+## Tests
+
+`tests/*.bats` source the real `charm-crush/rootfs/lib.sh` (via `tests/test_helper.bash`) and drive it with synthetic `$crushrc` / `$CRUSH_MD` fixtures in a temp dir. Run them with `bats tests/` (install bats via your package manager). Fixtures use RFC 5737 documentation addresses (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and `*.invalid` / `*.example.com` hosts - never a real or RFC 1918 address (the secret scan rejects those).
 
 ## Commands
 
-Validation (same checks CI runs — run these before every commit):
+Validation (same checks CI runs - run these before every commit):
 
 ```bash
-bash -n charm-crush/rootfs/run.sh                 # run.sh syntax
+bash -n charm-crush/rootfs/run.sh && bash -n charm-crush/rootfs/lib.sh
+shellcheck -S error charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh
+bats tests/
 python3 - <<'EOF'                                 # YAML + options/schema/translations completeness
 import yaml
 c = yaml.safe_load(open('charm-crush/config.yaml'))
@@ -45,15 +55,21 @@ docker buildx build --platform linux/amd64 --build-arg BUILD_FROM=ghcr.io/home-a
 
 Local CI validation needs `pyyaml` (pip install).
 
+## CI gates (`.github/workflows/ci.yml`)
+
+`validate` job: YAML + schema/translations completeness; `bash -n` and `shellcheck -S error` on run.sh + lib.sh (a full advisory report runs too); `bats tests/`; hadolint (checksum-verified binary, rules waived in `charm-crush/.hadolint.yaml`); actionlint (checksum-verified); the **version-bump recency gate** (run.sh, lib.sh and the Dockerfile must not have a commit newer than the last config.yaml commit - see Release process); frenck's official add-on linter; and the **secret scan** (API-key prefixes and RFC 1918 addresses in every tracked text file, `.github` included). `build` job (both arches, QEMU): image build, binary smoke test (crush, ttyd, ha), and a boot-surface smoke test that boots the image with a stub `/data/options.json` (third-party provider, mem0, a hyphenated http entry, a stdio entry) and asserts on the GENERATED crushrc.
+
+Third-party actions are pinned by commit SHA (tag kept as a trailing comment); downloaded binaries (ttyd, crush, ha CLI, hadolint, actionlint) are verified by sha256. Bumping any of them means updating the pin and the hash together.
+
 ## Release process (implicit convention)
 
-Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.0.1) in the same commit. Recent commit subjects are `feature summary; bump 1.0.12` style. HA add-ons won't update without a version bump, so never commit a change to `config.yaml`/`run.sh`/`Dockerfile` without one.
+Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.0.1) in the same commit. Recent commit subjects are `feature summary; bump 1.0.12` style. HA add-ons won't update without a version bump, so never commit a change to `config.yaml`/`run.sh`/`lib.sh`/`Dockerfile` without one.
 
 **A number that has already shipped doesn't count again.** Supervisor compares the version *string* and nothing else — tree contents, commit dates and file hashes are all invisible to it. So a merge, rebase or fast-forward carrying several commits releases every one of them under whichever number the last bumping commit set, and any commit landing after that without its own bump is permanently unreachable: the store and the install both read the same number, no delta is offered, and no amount of store reloading or repository re-adding can surface it. That is exactly how 1.0.28 failed — `c5e1dac` bumped to it, then `b7354c7` (run.sh option handling + the `mcp_servers` loop) and `051733a` landed unbumped on top, so installs built from any of those three trees reported 1.0.28 and the two later run.sh fixes could not be delivered at all; only `01fcace` (bumping to 1.0.29) did. Sanity check before pushing — the `config.yaml` line must be the *newer* of the two; if `run.sh` names a commit that came after it, the version is stale:
 
 ```bash
 git log --oneline -1 -- charm-crush/config.yaml    # last bump
-git log --oneline -1 -- charm-crush/rootfs/run.sh  # last run.sh change
+git log --oneline -1 -- charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh charm-crush/Dockerfile  # last code change
 ```
 
 ## How the add-on works (control flow at start)
@@ -75,7 +91,7 @@ Key precedence everywhere: **real environment > env file (/homeassistant/.crushd
 
 - **`init: false` in config.yaml is load-bearing.** s6-overlay must be pid 1; `init: true` re-parents it and the container dies with "can only run as pid 1".
 - **No `full_access`/`docker_api` on purpose** — keeps HA's security rating at the hardened default. The CRUSH.md "Hard Limits" block tells the crush agent which denials are by design (hassio paths, `supervisor.*` websockets, docker) so it stops retrying them.
-- **Never put a literal API key or private IP in any file.** CI's secret-scan step greps for known API-key prefixes and the author's LAN IP/address patterns (the exact patterns live in `.github/workflows/ci.yml`) and fails the build. The default configs are deliberately free of real hosts/keys; secrets come from env/URLs. Test fixtures inside the repo use RFC 5737 doc-range addresses (192.0.2.0/24) instead.
+- **Never put a literal API key or private IP in any file.** CI's secret-scan step greps every tracked text file for known API-key prefixes and RFC 1918 addresses (10/8, 172.16/12, 192.168/16) and fails the build; the exact patterns live in `.github/workflows/ci.yml`. The default configs are deliberately free of real hosts/keys; secrets come from env/URLs. Test fixtures use RFC 5737 doc-range addresses (192.0.2.0/24) instead.
 - **The fallback crushrc is bash executed by crush, not YAML.** When editing it, remember `: "${VAR:-cmd}"` does NOT assign (comment in run.sh documents this old bug); use `[ -n "$VAR" ] || VAR=...` chains.
 - **crushrc model lines need full metadata** — a slot without `--default-max-tokens` breaks session title generation ("max_tokens must be positive, got: 0", seen 2026-09-30). Register models with `model add` *and* set slots with `model large/small`.
 - **sed is busybox-safe** in run.sh (no backreferences); key values are never passed through sed (they may contain `/`, `#`) — use grep-out + printf + mv.

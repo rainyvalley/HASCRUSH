@@ -70,3 +70,56 @@ teardown() { teardown_tmp; }
   apply_model_slot large "$(tp_model_id ollama-cloud/glm-5.3-flash openai-compat-3p)"
   grep -qxF 'model large openai-compat-3p/glm-5.3-flash --reasoning-effort high' "$crushrc"
 }
+
+# ── original base URL is recorded, not assumed ───────────────────────────
+
+@test "a template ollama-cloud line with a non-default URL survives remap + reset" {
+  cat > "$crushrc" <<'RC'
+provider add ollama-cloud --type openai-compat --base-url "https://proxy.example.com/v1" --api-key "$OLLAMA_API_KEY"
+model large ollama-cloud/glm-5.3-flash
+RC
+  cp "$crushrc" "$TMP/orig2"
+  provider_remap openai-compat-3p "https://api.example.com/v1"
+  provider_reset openai-compat-3p
+  cmp "$crushrc" "$TMP/orig2"
+}
+
+@test "remap leaves a non-default URL in place (only the default is swapped)" {
+  printf 'provider add ollama-cloud --type openai-compat --base-url "https://proxy.example.com/v1"\n' > "$crushrc"
+  provider_remap openai-compat-3p "https://api.example.com/v1"
+  grep -qF -- '--base-url "https://proxy.example.com/v1"' "$crushrc"
+}
+
+@test "remap records a marker; reset removes it" {
+  provider_remap openai-compat-3p "https://api.example.com/v1"
+  grep -qxF '# charm-crush:base-url-was https://ollama.com/v1' "$crushrc"
+  provider_reset openai-compat-3p
+  ! grep -qF 'charm-crush:base-url-was' "$crushrc"
+}
+
+@test "repeated remap/reset cycles do not stack markers" {
+  provider_remap openai-compat-3p "https://a.example.com/v1"
+  provider_reset openai-compat-3p
+  provider_remap openai-compat-3p "https://b.example.com/v1"
+  [ "$(grep -c 'charm-crush:base-url-was' "$crushrc")" -eq 1 ]
+  provider_reset openai-compat-3p
+  cmp "$crushrc" "$TMP/orig"
+}
+
+@test "an rc remapped by an older version (no marker) still gets the default URL back" {
+  cat > "$crushrc" <<'RC'
+provider add openai-compat-3p --type openai-compat --base-url "https://old.example.com/v1" --api-key "$KEY"
+model large openai-compat-3p/glm-5.3-flash
+RC
+  provider_reset openai-compat-3p
+  grep -qF 'provider add ollama-cloud --type openai-compat --base-url "https://ollama.com/v1"' "$crushrc"
+  ! grep -qF 'old.example.com' "$crushrc"
+}
+
+@test "a recorded URL with & and spaces-free odd chars is restored verbatim" {
+  printf 'provider add ollama-cloud --type openai-compat --base-url "https://h.example.com/v1?a=1&b=2"\n' > "$crushrc"
+  cp "$crushrc" "$TMP/orig3"
+  provider_remap openai-compat-3p "https://api.example.com/v1"
+  provider_reset openai-compat-3p
+  cmp "$crushrc" "$TMP/orig3"
+}

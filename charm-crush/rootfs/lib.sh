@@ -206,6 +206,49 @@ mcp_sanitize() {
 # expanded as $MCP_TOKEN_home followed by "-assistant". Map '-' to '_'.
 mcp_token_var() { printf 'MCP_TOKEN_%s' "${1//-/_}"; }
 
+# '-' and '_' both map onto '_', so two DIFFERENT server names can land on one
+# variable (a-b and a_b -> MCP_TOKEN_a_b): the second export would silently
+# overwrite the first and the wrong token would go to the wrong server.
+# mcp_token_claim records which server owns each variable for this run;
+# $1 = server name. Returns 1 (and warns) when a DIFFERENT name already owns
+# the mapped variable - run.sh then skips that entry rather than send it a
+# token meant for another server. The same name twice is not a collision.
+# mcp_token_claims_reset starts a fresh run (run.sh calls it before its loop).
+MCP_TOKVAR_OWNERS=""
+mcp_token_claims_reset() { MCP_TOKVAR_OWNERS=""; }
+mcp_token_claim() {
+  _tc_var=$(mcp_token_var "$1")
+  while IFS= read -r _tc_line; do
+    case "$_tc_line" in
+      "$_tc_var="*)
+        if [ "${_tc_line#*=}" != "$1" ]; then
+          echo "[addon][WARN] mcp_servers: '$1' and '${_tc_line#*=}' both map to \$${_tc_var} - token collision, '$1' skipped (rename one of them)" >&2
+          return 1
+        fi
+        return 0 ;;
+    esac
+  done <<< "$MCP_TOKVAR_OWNERS"
+  MCP_TOKVAR_OWNERS="${MCP_TOKVAR_OWNERS}${_tc_var}=$1"$'\n'
+  return 0
+}
+
+# ── mcp_servers entry parsing ────────────────────────────────────────────
+# One jq spawn per entry for every field. $1 = one entry's JSON text; result
+# in the global array _mf (NUL-delimited read, so values may hold spaces):
+#   _mf[0]=name [1]=url [2]=command [3]=token [4]=token_url [5]=timeout
+#   [6]=argsok (1 = "args" absent or an array, 0 = present but NOT an array)
+#   [7..]=args, one element each (empty strings kept, spaces kept)
+# Embedded NULs are dropped so a value can never shift into the next field.
+# Callers apply their own per-field strips and charset validation.
+mcp_parse_entry() {
+  mapfile -d '' -t -- _mf < <(printf '%s' "$1" | jq -j '
+    [(.name // ""), (.url // ""), (.command // ""), (.token // ""),
+     (.token_url // ""), (.timeout // ""),
+     (if (.args // []) | type == "array" then 1 else 0 end)]
+    + (.args // [] | if type == "array" then . else [] end)
+    | .[] | (tostring | gsub("\u0000"; "")) + "\u0000"' 2>/dev/null)
+}
+
 # ── model slot rewiring ──────────────────────────────────────────────────
 # Needs the global $crushrc (set by run.sh / tests).
 apply_model_slot() {
@@ -230,18 +273,45 @@ apply_model_slot() {
 # pointing at the OLD third-party host while run.sh exported a DIFFERENT key
 # into it (the Ollama key, or the new third-party key): a credential sent to
 # a host the operator no longer configured. provider_reset restores the
-# ollama-cloud line first, so every start remaps from a clean state. The
-# original base URL of a remapped line is not recorded; it was ollama.com
-# whenever the remap changed it, so that is what is restored.
+# ollama-cloud line first, so every start remaps from a clean state.
+# provider_remap records the line's ORIGINAL base URL in a marker comment
+# line just above it; provider_reset restores exactly that URL (so a template
+# whose ollama-cloud line carries a non-default URL is not clobbered) and
+# deletes the marker. An rc remapped by an older add-on version has no marker;
+# for those the old assumption applies (the URL was https://ollama.com/v1).
+PROVIDER_URL_MARKER='# charm-crush:base-url-was '
 provider_reset() {
   grep -qF -- "$1" "$crushrc" 2>/dev/null || return 0
-  sed -i -e "/provider add $1/s#--base-url \"[^\"]*\"#--base-url \"https://ollama.com/v1\"#" \
+  _pr_url=$(sed -n "s/^${PROVIDER_URL_MARKER}//p" "$crushrc" | head -n 1)
+  [ -n "$_pr_url" ] || _pr_url="https://ollama.com/v1"
+  _pr_tmp="$crushrc.tmp.$$"
+  # awk, not sed: the recorded URL is template text (any chars); ENVIRON
+  # passes it without escape processing, and substr() splicing avoids sub()'s
+  # special handling of & and backslash in the replacement
+  PR_ID="$1" PR_URL="$_pr_url" awk '
+    BEGIN { u = ENVIRON["PR_URL"]; id = "provider add " ENVIRON["PR_ID"] }
+    index($0, id) && match($0, /--base-url "[^"]*"/) {
+      $0 = substr($0, 1, RSTART - 1) "--base-url \"" u "\"" substr($0, RSTART + RLENGTH)
+    }
+    { print }' "$crushrc" > "$_pr_tmp" && cat "$_pr_tmp" > "$crushrc"
+  rm -f "$_pr_tmp"
+  sed -i -e "\|^${PROVIDER_URL_MARKER}|d" \
     -e "s#provider add $1#provider add ollama-cloud#" -e "s#$1/#ollama-cloud/#g" "$crushrc"
 }
 # $1 = third-party provider id, $2 = base URL (caller has safe_url-checked
 # it: no # & \ " $ or backtick, so it is inert in the s### replacement and in
 # the double-quoted rc token).
 provider_remap() {
+  # marker first (records the ollama-cloud line's current base URL), then the
+  # rename + replace of the default URL
+  _pr_tmp="$crushrc.tmp.$$"
+  PR_MARK="$PROVIDER_URL_MARKER" awk '
+    /^[[:space:]]*provider add ollama-cloud([[:space:]]|$)/ && match($0, /--base-url "[^"]*"/) {
+      url = substr($0, RSTART + 12, RLENGTH - 13)
+      print ENVIRON["PR_MARK"] url
+    }
+    { print }' "$crushrc" > "$_pr_tmp" && cat "$_pr_tmp" > "$crushrc"
+  rm -f "$_pr_tmp"
   sed -i "s#provider add ollama-cloud#provider add $1#; s#ollama-cloud/#$1/#g" "$crushrc"
   sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$2\"#" "$crushrc"
 }
