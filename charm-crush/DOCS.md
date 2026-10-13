@@ -107,7 +107,7 @@ model small ollama-cloud/glm-5.3-flash --reasoning-effort high
 
 ## Memory (an MCP memory server)
 
-Memory is one entry in the `mcp_servers` JSON (see next section), not a separate field:
+Memory is one entry in the `mcp_servers` JSON (see the MCP servers section), not a separate field:
 
 | Want | Set |
 |---|---|
@@ -153,7 +153,7 @@ Entry forms:
 
 **Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
 
-Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable.
+Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable. Server names may contain `-`; env var names cannot, so `-` becomes `_` in the variable (`home-assistant` -> `MCP_TOKEN_home_assistant`). Two names that map to the same variable (`a-b` and `a_b`) collide: the later token-bearing entry is skipped with a warning in the add-on log - rename one of them.
 
 ## Central config (optional)
 
