@@ -97,12 +97,24 @@ RUN set -eux; \
     chmod +x /usr/local/bin/crush; rm -rf /tmp/crush.tar.gz /tmp/crush.sum /tmp/crush_*_Linux_*; \
     crush --version < /dev/null | tee /etc/crush-version
 
-# Home Assistant CLI (ha command) - pinned and retried; upstream publishes only
-# amd64 and aarch64, which are the only arches this add-on declares anyway.
+# Home Assistant CLI (ha command) - pinned, retried and checksum-verified.
+# Upstream publishes only amd64 and aarch64, which are the only arches this
+# add-on declares anyway. The sha256 values below were taken from the digest
+# GitHub records for each 5.2.0 release asset (releases API "digest" field)
+# and matched against a fresh download; upstream ships no checksum file of
+# its own. Updating the CLI = bump HA_CLI_VERSION + BOTH hashes together.
 ARG HA_CLI_VERSION=5.2.0
-RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+ARG HA_CLI_SHA256_AMD64=701be67aee9f1e092254097a40d006b450d1578641a262258b182237987e7479
+ARG HA_CLI_SHA256_AARCH64=af8c03ccddb65d223d7b7dab1570197b8a2ff8fc7139c1db054d08a91a4f8073
+RUN case "${BUILD_ARCH}" in \
+        amd64) HA_SHA256="${HA_CLI_SHA256_AMD64}" ;; \
+        aarch64) HA_SHA256="${HA_CLI_SHA256_AARCH64}" ;; \
+        *) echo "[FATAL] no ha CLI binary published for ${BUILD_ARCH}"; exit 1 ;; \
+    esac && \
+    curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
         "https://github.com/home-assistant/cli/releases/download/${HA_CLI_VERSION}/ha_${BUILD_ARCH}" \
         -o /usr/local/bin/ha && \
+    echo "${HA_SHA256}  /usr/local/bin/ha" | sha256sum -c - && \
     chmod +x /usr/local/bin/ha
 
 # Shell and tmux config (COPY works on every builder; heredocs need BuildKit).
