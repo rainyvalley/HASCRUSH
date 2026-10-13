@@ -213,7 +213,7 @@ jobs:
         run: |
           # Boots the built image the way the Supervisor would: stubs the
           # /data/options.json the boot actually reads (third_party provider,
-          # one mcp_servers http entry with an inline token), waits for the
+          # mem0, a hyphenated http entry, a stdio entry), waits for the
           # boot log markers, then asserts on the GENERATED crushrc - not on
           # the template - so the add-on's own surgery (remap, token plumbing)
           # is what is tested. Values are RFC 5737 doc addresses; no real
@@ -224,7 +224,9 @@ jobs:
             '{"provider":"third_party",' \
             ' "third_party_base_url":"http://test.invalid:9000/v1",' \
             ' "third_party_api_key":"smoke-key-not-real",' \
-            ' "mcp_servers":[{"name":"mem0","url":"http://test.invalid:8300/mcp","token":"smoke-token-not-real"}]}' \
+            ' "mcp_servers":[{"name":"mem0","url":"http://test.invalid:8300/mcp","token":"smoke-token-not-real"},' \
+            ' {"name":"home-assistant","url":"http://test.invalid:8123/mcp","token":"smoke-ha-token-not-real"},' \
+            ' {"name":"relay","command":"socat","args":["STDIO","TCP:192.0.2.5:3010"],"timeout":20}]}' \
             > "$work/options.json"
           mkdir -p "$work/data"
           cp "$work/options.json" "$work/data/options.json"
@@ -232,7 +234,7 @@ jobs:
             -v "$work/data:/data" charm-crush:${{ matrix.arch }}
           rc=0
           for _ in $(seq 1 240); do
-            if docker logs boot-smoke 2>&1 | grep -q 'mcp_servers: 1 server(s) applied'; then break; fi
+            if docker logs boot-smoke 2>&1 | grep -q 'mcp_servers: 3 server(s) applied'; then break; fi
             if [ "$(docker inspect -f '{{.State.Running}}' boot-smoke 2>/dev/null)" != true ]; then
               echo '::error::container exited before the boot marker appeared'; docker logs boot-smoke 2>&1; rc=1; break
             fi
@@ -255,11 +257,20 @@ jobs:
             #    the crushrc must reference the token var, not inline it)
             if ! echo "$crushrc" | grep -qF "mcp add mem0 --type http --url \"http://test.invalid:8300/mcp\""; then fail 'mem0 mcp entry not applied'; fi
             if ! echo "$crushrc" | grep -qF "Bearer \$MCP_TOKEN_mem0"; then fail 'token not referenced via MCP_TOKEN_'; fi
+            # 2b) hyphenated name: the token var is the underscore form, and the
+            #     rc must not carry the invalid $MCP_TOKEN_home-assistant
+            if ! echo "$crushrc" | grep -qF "mcp add home-assistant --type http --url \"http://test.invalid:8123/mcp\""; then fail 'home-assistant mcp entry not applied'; fi
+            if ! echo "$crushrc" | grep -qF "Bearer \$MCP_TOKEN_home_assistant"; then fail 'hyphenated name not mapped to MCP_TOKEN_home_assistant'; fi
+            if echo "$crushrc" | grep -qF 'MCP_TOKEN_home-assistant'; then fail 'hyphenated token var left in crushrc'; fi
+            # 2c) stdio entry: command, both args as separate tokens, timeout
+            if ! echo "$crushrc" | grep -qE 'mcp add relay --type stdio --command "socat" --args STDIO --args TCP:192\.0\.2\.5:3010 --timeout 20'; then fail 'stdio relay entry not applied as expected'; fi
             # 3) the token/key must be REFERENCED via env, never INLINED, in
             #    both the generated rc and the boot log
             if echo "$crushrc" | grep -qF 'smoke-token-not-real'; then fail 'token inlined in crushrc'; fi
             if echo "$crushrc" | grep -qF 'smoke-key-not-real'; then fail 'third-party key inlined in crushrc'; fi
             if grep -qF 'smoke-token-not-real' "$work/boot.log"; then fail 'token leaked into the boot log'; fi
+            if echo "$crushrc" | grep -qF 'smoke-ha-token-not-real'; then fail 'home-assistant token inlined in crushrc'; fi
+            if grep -qF 'smoke-ha-token-not-real' "$work/boot.log"; then fail 'home-assistant token leaked into the boot log'; fi
           fi
           docker rm -f boot-smoke >/dev/null 2>&1 || true
           exit $rc
