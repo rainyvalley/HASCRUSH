@@ -59,7 +59,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
-| `auto_update_crush` | `true` | Update crush on add-on start (with rollback) |
+| `auto_update_crush` | `false` | Update crush on add-on start (with rollback). Off by default since 1.0.33 for new installs: enabling it downloads the latest upstream crush and runs it as root at every start, verified only against a checksum published in the same release. Installs that already saved this option keep their value |
 
 ## LLM provider: Ollama (default) or any 3rd-party OpenAI-compatible API
 
@@ -294,11 +294,17 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
   decision; raises the rating back to 1 while enabled).
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
 - The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
-  it serves a live shell over the add-on's port and is **only reachable through HA ingress** —
-  HA's own authentication is the boundary in front of it, and it is never published directly.
-  Since 1.0.27 direct `:7681` traffic is additionally header-gated (`--auth-header X-Hass-Source`,
-  stamped by HA ingress) — that is an origin check, not user authentication: anything inside the
-  LAN that can send that header (e.g. a user with shell access on the host) is not stopped by it.
+  it serves a live shell and is **only reachable through HA ingress** — HA's own authentication is
+  the boundary in front of it, and it is never published directly. Since 1.0.33 this is enforced by
+  address, not just by a header: ttyd listens on loopback only (`127.0.0.1:7682`) and a small
+  `socat` gate on the ingress port (`7681`) relays only connections whose source is the Supervisor
+  ingress proxy (`172.30.32.2`, a fixed Home Assistant address; constants `INGRESS_ADDR` etc. in
+  `rootfs/lib.sh`). Other containers on the HA network and the LAN can no longer reach the shell,
+  which resolves the earlier "origin check only" limitation of the `X-Hass-Source` gate (1.0.27).
+  That header check (`--auth-header X-Hass-Source`) is kept as defense in depth. ttyd cannot bind to
+  the ingress address itself because that address belongs to the Supervisor container. If the gate
+  process dies the panel goes dark rather than open. This relies on the add-on running on the
+  default hassio bridge network (it does not use `host_network`).
 - API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
   and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.

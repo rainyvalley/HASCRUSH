@@ -59,7 +59,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
-| `auto_update_crush` | `true` | Update crush on add-on start (with rollback) |
+| `auto_update_crush` | `false` | Update crush on add-on start (with rollback). Off by default since 1.0.33 for new installs: enabling it downloads the latest upstream crush and runs it as root at every start, verified only against a checksum published in the same release. Installs that already saved this option keep their value |
 
 ## LLM provider: Ollama (default) or any 3rd-party OpenAI-compatible API
 
