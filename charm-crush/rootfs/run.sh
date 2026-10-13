@@ -715,6 +715,8 @@ else
   echo "[addon][ERROR] crush binary not responding - terminal still starts for debugging"
 fi
 
+# Absent/false -> off (matches the config.yaml default since 1.0.33). Never
+# rewritten here: a value the user saved is the Supervisor's to keep.
 AUTO_UPDATE=$(jq -r '.auto_update_crush // false' /data/options.json)
 if [ "$AUTO_UPDATE" = "true" ]; then
   # The tarball is executed as root the moment it is unpacked, so the archive
