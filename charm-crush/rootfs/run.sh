@@ -496,9 +496,21 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
   while IFS= read -r MCP_ENTRY; do
     MCP_COUNT=$((MCP_COUNT + 1))
     _mcp_idx=$((_mcp_idx + 1))
-    MCP_NAME=$(echo "$MCP_ENTRY" | jq -r '.name // ""' | tr -d '\r\n ')
-    MCP_URL=$(echo "$MCP_ENTRY" | jq -r '.url // ""' | tr -d '\r\n')
-    MCP_CMD=$(echo "$MCP_ENTRY" | jq -r '.command // ""' | tr -d '\r\n')
+    # One jq spawn per entry for every field (NUL-delimited, same pattern as
+    # the model-slot read below) instead of one jq+tr pair per field and per
+    # arg. Layout: name url command token token_url timeout argsok args...;
+    # argsok is 0 when "args" is present but not an array. Embedded NULs are
+    # dropped so a value can never shift into the next field. The strips
+    # below match the old per-field `tr -d` sets exactly.
+    mapfile -d '' -t -- _mf < <(printf '%s' "$MCP_ENTRY" | jq -j '
+      [(.name // ""), (.url // ""), (.command // ""), (.token // ""),
+       (.token_url // ""), (.timeout // ""),
+       (if (.args // []) | type == "array" then 1 else 0 end)]
+      + (.args // [] | if type == "array" then . else [] end)
+      | .[] | (tostring | gsub("\u0000"; "")) + "\u0000"' 2>/dev/null)
+    MCP_NAME=${_mf[0]//[$'\r\n ']/}
+    MCP_URL=${_mf[1]//[$'\r\n']/}
+    MCP_CMD=${_mf[2]//[$'\r\n']/}
     if [ -z "$MCP_NAME" ]; then
       echo "[addon][WARN] mcp_servers entry #$_mcp_idx has no name - skipped"
       continue
@@ -517,8 +529,8 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
       continue
     fi
     # token/token_url resolve once here, identically for http and stdio
-    MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
-    MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
+    MCP_TOK=${_mf[3]//[[:space:]]/}
+    MCP_TOK_URL=${_mf[4]//[$'\r\n']/}
     mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
     if [ -n "$MCP_URL" ]; then
       if [ -n "$MCP_TOK" ]; then
@@ -549,7 +561,11 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
       # pastes can ever break out of those quotes or the rc's outer
       # single-quoted token below.
       MCP_GATE="exec \"${MCP_CMD}\""
-      MCP_NARGS=$(echo "$MCP_ENTRY" | jq '.args // [] | length')
+      if [ "${_mf[6]}" != 1 ]; then
+        echo "[addon][WARN] mcp_servers '$MCP_NAME': args must be a JSON array - entry skipped" >&2
+        continue
+      fi
+      MCP_NARGS=$(( ${#_mf[@]} - 7 ))
       _arg_idx=0
       _mcp_args_ok=1
       while [ "$_arg_idx" -lt "$MCP_NARGS" ]; do
@@ -562,7 +578,7 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         # needed.
         # a paste with an editor line-wrap can embed raw \n/\r inside a
         # value; strip them so the generated rc line never breaks mid-token
-        _mcp_arg=$(echo "$MCP_ENTRY" | jq -r ".args[$_arg_idx]" | tr -d '\r\n')
+        _mcp_arg=${_mf[$((_arg_idx + 7))]//[$'\r\n']/}
         if ! safe_text "$_mcp_arg"; then
           echo "[addon][WARN] mcp_servers '$MCP_NAME': arg #$_arg_idx failed charset validation (shell metachars not allowed) - entry skipped" >&2
           _mcp_args_ok=0
@@ -573,7 +589,7 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         _arg_idx=$((_arg_idx + 1))
       done
       [ "$_mcp_args_ok" = "1" ] || continue
-      MCP_TIMEOUT=$(echo "$MCP_ENTRY" | jq -r '.timeout // ""' | tr -d '\r\n[:space:]')
+      MCP_TIMEOUT=${_mf[5]//[[:space:]]/}
       case "$MCP_TIMEOUT" in
         "") ;;
         # numeric only: the timeout is printf'd bare into the rc line
