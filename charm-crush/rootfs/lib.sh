@@ -273,18 +273,45 @@ apply_model_slot() {
 # pointing at the OLD third-party host while run.sh exported a DIFFERENT key
 # into it (the Ollama key, or the new third-party key): a credential sent to
 # a host the operator no longer configured. provider_reset restores the
-# ollama-cloud line first, so every start remaps from a clean state. The
-# original base URL of a remapped line is not recorded; it was ollama.com
-# whenever the remap changed it, so that is what is restored.
+# ollama-cloud line first, so every start remaps from a clean state.
+# provider_remap records the line's ORIGINAL base URL in a marker comment
+# line just above it; provider_reset restores exactly that URL (so a template
+# whose ollama-cloud line carries a non-default URL is not clobbered) and
+# deletes the marker. An rc remapped by an older add-on version has no marker;
+# for those the old assumption applies (the URL was https://ollama.com/v1).
+PROVIDER_URL_MARKER='# charm-crush:base-url-was '
 provider_reset() {
   grep -qF -- "$1" "$crushrc" 2>/dev/null || return 0
-  sed -i -e "/provider add $1/s#--base-url \"[^\"]*\"#--base-url \"https://ollama.com/v1\"#" \
+  _pr_url=$(sed -n "s/^${PROVIDER_URL_MARKER}//p" "$crushrc" | head -n 1)
+  [ -n "$_pr_url" ] || _pr_url="https://ollama.com/v1"
+  _pr_tmp="$crushrc.tmp.$$"
+  # awk, not sed: the recorded URL is template text (any chars); ENVIRON
+  # passes it without escape processing, and substr() splicing avoids sub()'s
+  # special handling of & and backslash in the replacement
+  PR_ID="$1" PR_URL="$_pr_url" awk '
+    BEGIN { u = ENVIRON["PR_URL"]; id = "provider add " ENVIRON["PR_ID"] }
+    index($0, id) && match($0, /--base-url "[^"]*"/) {
+      $0 = substr($0, 1, RSTART - 1) "--base-url \"" u "\"" substr($0, RSTART + RLENGTH)
+    }
+    { print }' "$crushrc" > "$_pr_tmp" && cat "$_pr_tmp" > "$crushrc"
+  rm -f "$_pr_tmp"
+  sed -i -e "\|^${PROVIDER_URL_MARKER}|d" \
     -e "s#provider add $1#provider add ollama-cloud#" -e "s#$1/#ollama-cloud/#g" "$crushrc"
 }
 # $1 = third-party provider id, $2 = base URL (caller has safe_url-checked
 # it: no # & \ " $ or backtick, so it is inert in the s### replacement and in
 # the double-quoted rc token).
 provider_remap() {
+  # marker first (records the ollama-cloud line's current base URL), then the
+  # rename + replace of the default URL
+  _pr_tmp="$crushrc.tmp.$$"
+  PR_MARK="$PROVIDER_URL_MARKER" awk '
+    /^[[:space:]]*provider add ollama-cloud([[:space:]]|$)/ && match($0, /--base-url "[^"]*"/) {
+      url = substr($0, RSTART + 12, RLENGTH - 13)
+      print ENVIRON["PR_MARK"] url
+    }
+    { print }' "$crushrc" > "$_pr_tmp" && cat "$_pr_tmp" > "$crushrc"
+  rm -f "$_pr_tmp"
   sed -i "s#provider add ollama-cloud#provider add $1#; s#ollama-cloud/#$1/#g" "$crushrc"
   sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$2\"#" "$crushrc"
 }
