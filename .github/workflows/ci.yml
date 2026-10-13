@@ -24,7 +24,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # the version-recency gate needs full history (%ct per file);
           # the token is not used - push rights stay with the local runner
@@ -125,7 +125,7 @@ jobs:
           exit $rc
 
       - name: Official add-on validation (frenck action-app-linter)
-        uses: frenck/action-app-linter@v2.21.1
+        uses: frenck/action-app-linter@b9cfd1bc62ba60d2c4fc96317b5f7ada5923f4a7 # v2.21.1
         with:
           path: ./charm-crush
         # Supplement to the completeness check above, not a replacement: this
@@ -156,13 +156,15 @@ jobs:
       matrix:
         arch: [amd64, aarch64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Resolve BUILD_FROM from build.yaml
         id: buildfrom
