@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml']
+    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml', '.github/scripts/**']
   pull_request:
-    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml']
+    paths: ['charm-crush/**', 'tests/**', '.github/workflows/ci.yml', '.github/scripts/**']
   workflow_dispatch:
 
 # A newer push to the same ref supersedes the in-flight run: the older run's
@@ -55,7 +55,7 @@ jobs:
           # warn/info findings in these files are pre-existing style notes on
           # code paths that work (SC2086 etc.) - see the advisory report step;
           # fix findings at their occurrences, never with a global disable.
-          shellcheck -S error charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh
+          shellcheck -S error charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh .github/scripts/check_changelog.sh
 
       - name: Full shellcheck report (advisory)
         continue-on-error: true
@@ -123,6 +123,13 @@ jobs:
             fi
           done
           exit $rc
+
+      - name: Changelog gate (CHANGELOG.md has [Unreleased] and the config.yaml version)
+        run: |
+          # The add-on's Changelog tab renders charm-crush/CHANGELOG.md. A
+          # version bump must ship its release notes in the same change.
+          # Local files only, no network. Unit-tested in tests/changelog_gate.bats.
+          bash .github/scripts/check_changelog.sh
 
       - name: Official add-on validation (frenck action-app-linter)
         uses: frenck/action-app-linter@b9cfd1bc62ba60d2c4fc96317b5f7ada5923f4a7 # v2.21.1
