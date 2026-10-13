@@ -8,7 +8,7 @@ teardown() { teardown_tmp; }
 
 @test "mcp_sanitize drops orphaned --args fragments that lost their mcp add head" {
   # what a pre-1.0.14 single-line delete left behind
-  printf 'model large glm\n  --args socat TCP:10.0.0.1:1\nprovider add ollama-cloud --type openai-compat\n' > "$crushrc"
+  printf 'model large glm\n  --args socat TCP:192.0.2.1:1\nprovider add ollama-cloud --type openai-compat\n' > "$crushrc"
   run mcp_sanitize
   ! grep -q -- '--args' "$crushrc"
   grep -qxF 'model large glm' "$crushrc"
@@ -34,9 +34,9 @@ EOF
 }
 
 @test "mcp_sanitize keeps mcp-exclusive fragments of an OPEN multi-line entry" {
-  printf 'mcp add openscad --type stdio \\\n  --args socat TCP:10.0.0.1:8000 \\\n  --timeout 20\nmodel large glm\n' > "$crushrc"
+  printf 'mcp add openscad --type stdio \\\n  --args socat TCP:192.0.2.1:8000 \\\n  --timeout 20\nmodel large glm\n' > "$crushrc"
   mcp_sanitize
-  grep -qF -- '--args socat TCP:10.0.0.1:8000' "$crushrc"
+  grep -qF -- '--args socat TCP:192.0.2.1:8000' "$crushrc"
   grep -qF -- '--timeout 20' "$crushrc"
   grep -qF 'mcp add openscad' "$crushrc"
 }
@@ -53,19 +53,19 @@ EOF
   cat > "$crushrc" <<'EOF'
 if [ -n "$LOCAL_OLLAMA_URL" ]; then
   mcp add ollama --type ollama --base-url "http://x:11434" \
-    --args socat TCP:10.0.0.1:1 \
+    --args socat TCP:192.0.2.1:1 \
     --timeout 5
 fi
 EOF
   mcp_sanitize
   grep -qF '  mcp add ollama --type ollama --base-url "http://x:11434" \' "$crushrc"
-  grep -qF '    --args socat TCP:10.0.0.1:1' "$crushrc"
+  grep -qF '    --args socat TCP:192.0.2.1:1' "$crushrc"
   grep -qF '    --timeout 5' "$crushrc"
   grep -qxF 'fi' "$crushrc"
 }
 
 @test "mcp_sanitize repairs a REAL pre-1.0.14 damaged rc (head gone, 1 continuation line orphaned)" {
-  printf 'model large glm\n  --args socat TCP:10.0.0.1:8000 \\\n  --timeout 20\nfi\n' > "$crushrc"
+  printf 'model large glm\n  --args socat TCP:192.0.2.1:8000 \\\n  --timeout 20\nfi\n' > "$crushrc"
   mcp_sanitize
   ! grep -qE -- '--args|--timeout' "$crushrc"
   grep -qxF 'model large glm' "$crushrc"

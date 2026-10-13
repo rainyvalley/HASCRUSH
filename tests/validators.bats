@@ -8,7 +8,7 @@ teardown() { teardown_tmp; }
 
 @test "safe_url passes http/https URLs with URL-safe chars" {
   for u in \
-    "http://192.168.1.10:11434/v1" \
+    "http://192.0.2.10:11434/v1" \
     "https://ollama.com/v1" \
     "https://host.example/user/p%20ath?q" \
     "http://localhost/mcp?tok.123abc"; do

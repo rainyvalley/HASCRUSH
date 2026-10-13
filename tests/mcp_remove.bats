@@ -56,7 +56,7 @@ teardown() { teardown_tmp; }
 if [ -n "$LOCAL_OLLAMA_URL" ]; then
   mcp add ollama --type ollama \
     --base-url "http://x:11434" \
-    --args socat TCP:10.0.0.1:1 \
+    --args socat TCP:192.0.2.1:1 \
     --timeout 5
   provider add ollama-local --type ollama --base-url "http://x:11434"
 fi

@@ -135,18 +135,21 @@ jobs:
 
       - name: Secret scan
         run: |
-          # nothing that looks like a real key, token or private address may be
-          # committed anywhere (docs, tests, lockfiles included); .github is
-          # excluded - the scanner cannot scan its own patterns
-          PAT='sk-ant-oat|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|192\.0\.2\.252|dev@'
-          ! grep -rniE "$PAT" \
-            --include='*.sh' --include='*.bats' --include='*.yaml' --include='*.yml' \
-            --include='*.md' --include='*.toml' --include='*.json' \
-            --exclude-dir=.git --exclude-dir=.github . || {
-            echo 'Secret-looking strings found:'; grep -rniE "$PAT" \
-              --include='*.sh' --include='*.bats' --include='*.yaml' --include='*.yml' \
-              --include='*.md' --include='*.toml' --include='*.json' \
-              --exclude-dir=.git --exclude-dir=.github . ; exit 1; }
+          # Nothing that looks like a real key, token or private (RFC 1918)
+          # address may be committed anywhere. Scans EVERY tracked text file
+          # (-I skips binaries such as the png icons), so Dockerfile, dotfiles,
+          # *.bash helpers and this workflow are covered too. The patterns are
+          # written so their own source text does not match them (bracketed
+          # class / escaped dots), which is what lets .github be scanned.
+          # RFC 5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24,
+          # 203.0.113.0/24) are not RFC 1918, so test fixtures using them pass.
+          # The octet guard keeps version-like strings (1.10.0.0.1) out.
+          PRIV='(^|[^0-9.])(10\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]{1,3}\.[0-9]{1,3}([^0-9]|$)'
+          PAT="sk-ant-oa[t]|sk-or-[a-z0-9-]{20}|gho_[a-z0-9]{30}|${PRIV}"
+          if git ls-files -z | xargs -0 grep -InE -e "$PAT"; then
+            echo '::error::Secret- or private-address-looking strings found (listed above)'
+            exit 1
+          fi
           echo 'no secrets'
 
   build:
