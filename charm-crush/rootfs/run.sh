@@ -282,12 +282,15 @@ if [ -n "$LOCAL_OLLAMA_URL" ]; then
 provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL" --discover-models true
 fi
 
-# Default = GLM 5.3 Flash with thinking (effort high = model-decided depth)
-model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
-model large ollama-cloud/glm-5.3-flash --reasoning-effort high
-model small ollama-cloud/glm-5.3-flash --reasoning-effort high
+# Default = DeepSeek V4.1 Flash with thinking (effort high = model-decided depth).
+# One model for the daily, helper and deep tiers; they differ only in reasoning
+# effort: daily/helper = high, deep = max (set crush_reasoning_effort: max).
+model add ollama-cloud/deepseek-v4.1-flash --name "DeepSeek V4.1 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
+model large ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
+model small ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
 
-# Deep mode (registered, not default - pick it via / in the TUI):
+# Former defaults, still registered as picker alternatives (pick them via / in the TUI):
+model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
 model add ollama-cloud/glm-5.3 --name "GLM 5.3" --context-window 1000000 --default-max-tokens 128000 --can-reason true --reasoning-effort max --price-input 1.4 --price-output 4.4
 
 # Local vision (LAN Ollama) + cloud vision fallback

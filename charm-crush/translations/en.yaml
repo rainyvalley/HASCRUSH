@@ -6,7 +6,7 @@ configuration:
     description: >-
       ollama (default): models served by ollama.com and/or your LAN Ollama.
       third_party: any OpenAI-compatible API - then set its Base URL and API
-      Key below; the default GLM models are remapped onto your provider.
+      Key below; the default models are remapped onto your provider.
   third_party_base_url:
     name: Third-Party Base URL
     description: >-
@@ -25,17 +25,18 @@ configuration:
     name: Default (Daily) Model
     description: >-
       Model registration id used as the daily default (provider/model form).
-      Defaults to ollama-cloud/glm-5.3-flash. The picker in the TUI always
+      Defaults to ollama-cloud/deepseek-v4.1-flash. The picker in the TUI always
       shows every model in the config; restart the add-on to refresh choices.
   crush_small_model:
     name: Helper (Small) Model
     description: >-
-      Model used for session summaries/titles. Defaults to ollama-cloud/glm-5.3-flash.
+      Model used for session summaries/titles. Defaults to ollama-cloud/deepseek-v4.1-flash.
   crush_deep_model:
     name: Deep Reasoning Model
     description: >-
       Registered as a reasoning model for heavy tasks; switch to it via the
-      TUI model picker. Defaults to ollama-cloud/glm-5.3.
+      TUI model picker. Defaults to ollama-cloud/deepseek-v4.1-flash (the same
+      model as the daily default; set the reasoning effort to max for deep work).
   crush_reasoning_effort:
     name: Reasoning Effort (Daily Model)
     description: >-
@@ -46,7 +47,7 @@ configuration:
     description: >-
       Ask each configured provider for its full model catalog at startup
       (Ollama Cloud and/or your LAN Ollama) and merge it into the TUI model
-      picker - every model, not just the hand-registered GLM ones. Explicitly
+      picker - every model, not just the hand-registered ones. Explicitly
       registered models keep their metadata and always win. Disable to show
       only hand-registered models (useful on catalog-huge third-party
       endpoints). Applies on add-on restart.

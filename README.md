@@ -19,7 +19,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 ## Features
 
 - **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
-- **Your models, any of them** — defaults: **GLM 5.3 Flash** daily (thinking, effort high), **GLM 5.3** deep (effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just GLM); refresh = add-on restart
+- **Your models, any of them** — defaults: **DeepSeek V4.1 Flash** for the daily, helper and deep tiers (thinking; daily effort high, deep effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just DeepSeek); refresh = add-on restart
 - **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
 - **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
 - **Memory (optional)** — point at any MCP memory server (e.g. a mem0-style shared layer your other chat clients also use); empty = off
@@ -50,9 +50,9 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL) |
 | `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
 | `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (memory/vision/CAD token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
-| `crush_large_model` | `ollama-cloud/glm-5.3-flash` | Daily default (registration id) |
-| `crush_small_model` | `ollama-cloud/glm-5.3-flash` | Helper model (summaries/titles) |
-| `crush_deep_model` | `ollama-cloud/glm-5.3` | Deep reasoning model (TUI picker) |
+| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default (registration id) |
+| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) |
+| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep reasoning model (TUI picker); same model as the daily default, run with `crush_reasoning_effort: max` for deep work |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
@@ -84,7 +84,7 @@ Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_UR
 **Choosing at runtime** — in the TUI:
 1. Type `/` → pick **models** (or press the model-picker key from the help line).
 2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`).
-3. Pick `GLM 5.3 Flash` for everyday; pick `GLM 5.3` for deep thinking-heavy tasks; pick a vision model and drop in an image to inspect it.
+3. `DeepSeek V4.1 Flash` is the default for everything (set `crush_reasoning_effort` to `max` for deep, thinking-heavy tasks; `GLM 5.3 Flash` and `GLM 5.3` stay available in the picker); pick a vision model and drop in an image to inspect it.
 
 **Refreshing the model list** — the picker refreshes on add-on restart. With **Auto-discover All Models** (`crush_discover_models`, default on; `--discover-models true` under the hood) every start re-queries each provider's catalog, so new models appear with no config edit. For anything needing explicit metadata (prices, context window, effort), register it:
 
@@ -101,8 +101,8 @@ model add ollama-cloud/kimi-k3 --name "Kimi K3" --context-window 1048576 \
   --default-max-tokens 16000 --can-reason true --reasoning-effort high \
   --price-input 3.27 --price-output 16.33
 # slots choose the DEFAULT the agent starts with:
-model large ollama-cloud/glm-5.3-flash --reasoning-effort high
-model small ollama-cloud/glm-5.3-flash --reasoning-effort high
+model large ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
+model small ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
 ```
 
 ## Memory (an MCP memory server)
