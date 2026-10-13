@@ -342,6 +342,12 @@ fi
 
 # ── LLM provider: ollama (default) or a 3rd-party OpenAI-compatible API ─
 PROVIDER=$(jq -r '.provider // "ollama"' /data/options.json)
+TPID=openai-compat-3p
+TP_ACTIVE=0
+# undo a previous start's remap first (provider_reset in rootfs/lib.sh): the
+# persisted rc must never keep pointing at a third-party host this start did
+# not configure
+provider_reset "$TPID"
 if [ "$PROVIDER" = "third_party" ]; then
   TP_URL="${THIRD_PARTY_BASE_URL:-$(jq -r '.third_party_base_url // ""' /data/options.json)}"
   TP_KEY="${THIRD_PARTY_API_KEY:-$(jq -r '.third_party_api_key // ""' /data/options.json)}"
@@ -350,9 +356,11 @@ if [ "$PROVIDER" = "third_party" ]; then
   elif ! safe_url "$TP_URL"; then
     echo "[addon][WARN] third_party_base_url failed charset validation (http/https + URL-safe chars only) - falling back to ollama" >&2
   else
-    TPID=openai-compat-3p
-    sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
-    sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
+    provider_remap "$TPID" "$TP_URL"
+    TP_ACTIVE=1
+    # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
+    # the stray copy of the rc that left next to it
+    rm -f "${crushrc}E"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
     # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
     # contain any character)
@@ -520,10 +528,11 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
     MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
     mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
+    MCP_TOKVAR=$(mcp_token_var "$MCP_NAME")   # '-' is legal in names, not in env vars (lib.sh)
     if [ -n "$MCP_URL" ]; then
       if [ -n "$MCP_TOK" ]; then
-        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
-        printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $MCP_TOKEN_%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_NAME" >> "$crushrc"
+        export "${MCP_TOKVAR}=${MCP_TOK}"
+        printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_TOKVAR" >> "$crushrc"
       else
         # no token resolves: still wire the server (LAN servers may not need
         # auth) - same posture as mem0's token fetch failure
@@ -580,12 +589,12 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         *[!0-9]*) echo "[addon][WARN] mcp_servers '$MCP_NAME': timeout must be numeric - entry skipped" >&2; continue ;;
       esac
       if [ -n "$MCP_TOK" ]; then
-        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
+        export "${MCP_TOKVAR}=${MCP_TOK}"
         # single-quoted rc token around the sh -c body keeps the variable
         # UNEXPANDED in the stored rc (resolved when crush launches the
         # server). The printf "%s\n" newline inside is written as literal
         # \n here and becomes a real newline inside the inner sh.
-        MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$MCP_TOKEN_${MCP_NAME}\"; $MCP_GATE; }'"
+        MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$${MCP_TOKVAR}\"; $MCP_GATE; }'"
       else
         MCP_RC="mcp add $MCP_NAME --type stdio --command \"$MCP_CMD\"$MCP_ARGS_LINE"
         # no token resolves: still wire the server (a bare relay is the
@@ -640,17 +649,21 @@ LARGE_MODEL="${CRUSH_LARGE_MODEL:-${_mopts[0]}}"
 SMALL_MODEL="${CRUSH_SMALL_MODEL:-${_mopts[1]}}"
 DEEP_MODEL="${CRUSH_DEEP_MODEL:-${_mopts[2]}}"
 EFFORT="${CRUSH_REASONING_EFFORT:-${_mopts[3]}}"
+if [ "$TP_ACTIVE" = 1 ]; then
+  # the option defaults name ollama-cloud/...; follow the remap (lib.sh)
+  LARGE_MODEL=$(tp_model_id "$LARGE_MODEL" "$TPID")
+  SMALL_MODEL=$(tp_model_id "$SMALL_MODEL" "$TPID")
+  DEEP_MODEL=$(tp_model_id "$DEEP_MODEL" "$TPID")
+fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
-# deep model: register if not already registered (escaped, busybox-safe grep)
+# deep model: register if not already registered (register_deep_model in lib.sh)
 if [ -n "$DEEP_MODEL" ]; then
   if ! safe_text "$DEEP_MODEL"; then
     echo "[addon][WARN] crush_deep_model failed charset validation (shell metachars not allowed) - deep model not registered" >&2
     DEEP_MODEL=""
   else
-    ESC=$(printf '%s' "$DEEP_MODEL" | sed 's/[.[\\*+^$()|?{]/\\&/g')
-    grep -qE "^model add .*/$ESC( |$)" "$crushrc" 2>/dev/null || \
-      printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$DEEP_MODEL" >> "$crushrc"
+    register_deep_model "$DEEP_MODEL"
   fi
 fi
 

@@ -199,6 +199,13 @@ mcp_sanitize() {
   mv "$_mcp_sz_tmp" "$crushrc" 2>/dev/null || true
 }
 
+# ── MCP token env var name ───────────────────────────────────────────────
+# Server names may contain '-' (run.sh accepts [A-Za-z0-9_-]), env var names
+# may not: `export MCP_TOKEN_home-assistant=...` fails, which under run.sh's
+# set -e aborted the whole boot, and the rc's $MCP_TOKEN_home-assistant
+# expanded as $MCP_TOKEN_home followed by "-assistant". Map '-' to '_'.
+mcp_token_var() { printf 'MCP_TOKEN_%s' "${1//-/_}"; }
+
 # ── model slot rewiring ──────────────────────────────────────────────────
 # Needs the global $crushrc (set by run.sh / tests).
 apply_model_slot() {
@@ -214,4 +221,51 @@ apply_model_slot() {
   else
     printf '\nmodel %s %s\n' "$1" "$2" >> "$crushrc"
   fi
+}
+# ── third-party provider remap ───────────────────────────────────────────
+# Needs the global $crushrc. $1 = the third-party provider id run.sh uses.
+# The remap rewrites the PERSISTED rc, which is kept across starts (fallback
+# rc, or a template kept after a failed fetch). Without an undo, switching
+# provider back to ollama - or changing third_party_base_url - left the rc
+# pointing at the OLD third-party host while run.sh exported a DIFFERENT key
+# into it (the Ollama key, or the new third-party key): a credential sent to
+# a host the operator no longer configured. provider_reset restores the
+# ollama-cloud line first, so every start remaps from a clean state. The
+# original base URL of a remapped line is not recorded; it was ollama.com
+# whenever the remap changed it, so that is what is restored.
+provider_reset() {
+  grep -qF -- "$1" "$crushrc" 2>/dev/null || return 0
+  sed -i -e "/provider add $1/s#--base-url \"[^\"]*\"#--base-url \"https://ollama.com/v1\"#" \
+    -e "s#provider add $1#provider add ollama-cloud#" -e "s#$1/#ollama-cloud/#g" "$crushrc"
+}
+# $1 = third-party provider id, $2 = base URL (caller has safe_url-checked
+# it: no # & \ " $ or backtick, so it is inert in the s### replacement and in
+# the double-quoted rc token).
+provider_remap() {
+  sed -i "s#provider add ollama-cloud#provider add $1#; s#ollama-cloud/#$1/#g" "$crushrc"
+  sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$2\"#" "$crushrc"
+}
+# Model ids from options/env name the ollama-cloud provider by default; when
+# the third-party remap is active they must follow it, or the slot is set to
+# a provider the rc no longer registers. $1 = model id, $2 = provider id.
+tp_model_id() {
+  case "$1" in
+    ollama-cloud/*) printf '%s/%s' "$2" "${1#ollama-cloud/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# ── deep model registration ──────────────────────────────────────────────
+# Needs the global $crushrc. $1 = model id (caller has safe_text-checked it).
+# Appends a `model add` for $1 unless the rc already registers it, under
+# either the full id or a bare id after some provider prefix. The old check
+# was `^model add .*/ID`, which demands a '/' BEFORE the whole id: a full id
+# like ollama-cloud/glm-5.3 (the option default) never matched its own
+# registration, so the line was appended again on EVERY start, and the late
+# metadata-less re-registration followed the rc's full one. Indented lines
+# (template `if` blocks) count as registered too.
+register_deep_model() {
+  _deep_esc=$(printf '%s' "$1" | sed 's/[.[\\*+^$()|?{]/\\&/g')
+  grep -qE "^[[:space:]]*model add (.*/)?$_deep_esc( |$)" "$crushrc" 2>/dev/null || \
+    printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$1" >> "$crushrc"
 }
