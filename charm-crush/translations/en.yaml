@@ -112,5 +112,7 @@ configuration:
   auto_update_crush:
     name: Auto-update Crush
     description: >-
-      Check for a newer Crush release on each add-on start and install it
-      (with rollback if the new binary fails its smoke test).
+      Off by default. When enabled, each add-on start downloads the latest
+      upstream Crush release and runs it as root (checked only against a
+      checksum from the same release; rolled back if the new binary fails its
+      smoke test). Leave off to use the version pinned in the add-on image.

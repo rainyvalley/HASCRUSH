@@ -83,7 +83,7 @@ git log --oneline -1 -- charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh char
 5. Writes/patches `/homeassistant/.crushdata/CRUSH.md` — the agent-facing guardrails file crush ingests. Marker-based injection (`<!-- hasscrush-limits-start/end -->`) so user edits survive: never rewrite this file wholesale from run.sh; edit the `LIMITS_BODY` heredoc instead.
 6. crushrc resolution: `crush_config_url` fetch (sanity-checked with grep for `provider|model add`) over a built-in fallback; the crushrc is a **bash script** that resolves `OLLAMA_API_KEY`/`MCP_TOKEN_<name>` from the environment run.sh exports.
 7. Option overrides applied via sed: provider remap (third-party), model slots, reasoning effort, and the `mcp_servers` JSON merge (one option wires ALL MCP servers, tokens exported as `MCP_TOKEN_<name>` env vars, referenced not inlined).
-8. Optional crush self-update (with rollback), then `exec ttyd` serving `tmux new-session -A -s crush` on port 7681 (ingress).
+8. Optional crush self-update (with rollback), then start the socat ingress gate (port 7681, accepts only the Supervisor ingress address `172.30.32.2`) and `exec ttyd` on loopback `127.0.0.1:7682` serving `tmux new-session -A -s crush`, with `--auth-header X-Hass-Source` kept as defense in depth. The launch argv is built by `ttyd_args`/`ingress_gate_args` in lib.sh (tested in `tests/ttyd_gate.bats`). The secret scan has one documented exception for that Supervisor address.
 
 Key precedence everywhere: **real environment > env file (/homeassistant/.crushdata/env) > Options tab > central URL > persisted file**.
 

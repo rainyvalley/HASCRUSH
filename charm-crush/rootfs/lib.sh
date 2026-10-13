@@ -339,3 +339,39 @@ register_deep_model() {
   grep -qE "^[[:space:]]*model add (.*/)?$_deep_esc( |$)" "$crushrc" 2>/dev/null || \
     printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$1" >> "$crushrc"
 }
+
+# ── ttyd / ingress gate ──────────────────────────────────────────────────
+# The Supervisor's ingress proxy lives at a fixed address on the hassio
+# network and is the ONLY legitimate client of this add-on's ingress port.
+# That address belongs to the SUPERVISOR container, not to this one, so ttyd
+# cannot bind to it (bind(2) -> EADDRNOTAVAIL); the gate is therefore a
+# source-address allowlist on the listener the Supervisor connects to.
+INGRESS_ADDR=172.30.32.2    # Supervisor ingress proxy (fixed by the Supervisor)
+INGRESS_PORT=7681           # config.yaml ingress_port - what the Supervisor dials
+TTYD_BACKEND_ADDR=127.0.0.1 # ttyd itself is loopback-only
+TTYD_BACKEND_PORT=7682      # loopback port ttyd really listens on
+
+# Prints the socat argv (one word per line) of the gate: accept only
+# $INGRESS_ADDR on $INGRESS_PORT and relay raw TCP (HTTP + WebSocket) to ttyd.
+ingress_gate_args() {
+  printf '%s\n' \
+    "TCP4-LISTEN:${INGRESS_PORT},fork,reuseaddr,range=${INGRESS_ADDR}/32" \
+    "TCP4:${TTYD_BACKEND_ADDR}:${TTYD_BACKEND_PORT}"
+}
+
+# Prints the ttyd argv (one word per line) up to and including the shell
+# command. $1 font size, $2 colour theme string, rest = shell command words.
+# Listens on loopback only; --auth-header stays as defense in depth.
+ttyd_args() {
+  _ta_font=$1 _ta_colors=$2
+  shift 2
+  printf '%s\n' \
+    --interface "$TTYD_BACKEND_ADDR" --port "$TTYD_BACKEND_PORT" \
+    --writable --ping-interval 30 --max-clients 5 \
+    --auth-header X-Hass-Source \
+    -t "fontSize=${_ta_font}" \
+    -t fontFamily=Monaco,Consolas,monospace \
+    -t scrollback=20000 \
+    -t "theme=${_ta_colors}" \
+    "$@"
+}
