@@ -206,6 +206,49 @@ mcp_sanitize() {
 # expanded as $MCP_TOKEN_home followed by "-assistant". Map '-' to '_'.
 mcp_token_var() { printf 'MCP_TOKEN_%s' "${1//-/_}"; }
 
+# '-' and '_' both map onto '_', so two DIFFERENT server names can land on one
+# variable (a-b and a_b -> MCP_TOKEN_a_b): the second export would silently
+# overwrite the first and the wrong token would go to the wrong server.
+# mcp_token_claim records which server owns each variable for this run;
+# $1 = server name. Returns 1 (and warns) when a DIFFERENT name already owns
+# the mapped variable - run.sh then skips that entry rather than send it a
+# token meant for another server. The same name twice is not a collision.
+# mcp_token_claims_reset starts a fresh run (run.sh calls it before its loop).
+MCP_TOKVAR_OWNERS=""
+mcp_token_claims_reset() { MCP_TOKVAR_OWNERS=""; }
+mcp_token_claim() {
+  _tc_var=$(mcp_token_var "$1")
+  while IFS= read -r _tc_line; do
+    case "$_tc_line" in
+      "$_tc_var="*)
+        if [ "${_tc_line#*=}" != "$1" ]; then
+          echo "[addon][WARN] mcp_servers: '$1' and '${_tc_line#*=}' both map to \$${_tc_var} - token collision, '$1' skipped (rename one of them)" >&2
+          return 1
+        fi
+        return 0 ;;
+    esac
+  done <<< "$MCP_TOKVAR_OWNERS"
+  MCP_TOKVAR_OWNERS="${MCP_TOKVAR_OWNERS}${_tc_var}=$1"$'\n'
+  return 0
+}
+
+# ── mcp_servers entry parsing ────────────────────────────────────────────
+# One jq spawn per entry for every field. $1 = one entry's JSON text; result
+# in the global array _mf (NUL-delimited read, so values may hold spaces):
+#   _mf[0]=name [1]=url [2]=command [3]=token [4]=token_url [5]=timeout
+#   [6]=argsok (1 = "args" absent or an array, 0 = present but NOT an array)
+#   [7..]=args, one element each (empty strings kept, spaces kept)
+# Embedded NULs are dropped so a value can never shift into the next field.
+# Callers apply their own per-field strips and charset validation.
+mcp_parse_entry() {
+  mapfile -d '' -t -- _mf < <(printf '%s' "$1" | jq -j '
+    [(.name // ""), (.url // ""), (.command // ""), (.token // ""),
+     (.token_url // ""), (.timeout // ""),
+     (if (.args // []) | type == "array" then 1 else 0 end)]
+    + (.args // [] | if type == "array" then . else [] end)
+    | .[] | (tostring | gsub("\u0000"; "")) + "\u0000"' 2>/dev/null)
+}
+
 # ── model slot rewiring ──────────────────────────────────────────────────
 # Needs the global $crushrc (set by run.sh / tests).
 apply_model_slot() {
