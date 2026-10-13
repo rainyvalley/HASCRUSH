@@ -16,7 +16,9 @@ charm-crush/
   rootfs/root/     # .bashrc / .tmux.conf copied into the image
   translations/en.yaml  # Options-tab labels - CI asserts EVERY option has an entry
   DOCS.md          # Documentation-tab content (mirrors README.md; keep the two in sync)
-tests/             # bats unit suites for rootfs/lib.sh (+ test_helper.bash)
+  CHANGELOG.md     # Changelog-tab content (Keep a Changelog; gated by CI, see Release process)
+tests/             # bats unit suites for rootfs/lib.sh and the changelog gate (+ test_helper.bash)
+.github/scripts/   # check_changelog.sh (changelog gate)
 repository.json    # HA add-on repository descriptor
 .github/workflows/ci.yml
 ```
@@ -57,13 +59,15 @@ Local CI validation needs `pyyaml` (pip install).
 
 ## CI gates (`.github/workflows/ci.yml`)
 
-`validate` job: YAML + schema/translations completeness; `bash -n` and `shellcheck -S error` on run.sh + lib.sh (a full advisory report runs too); `bats tests/`; hadolint (checksum-verified binary, rules waived in `charm-crush/.hadolint.yaml`); actionlint (checksum-verified); the **version-bump recency gate** (run.sh, lib.sh and the Dockerfile must not have a commit newer than the last config.yaml commit - see Release process); frenck's official add-on linter; and the **secret scan** (API-key prefixes and RFC 1918 addresses in every tracked text file, `.github` included). `build` job (both arches, QEMU): image build, binary smoke test (crush, ttyd, ha), and a boot-surface smoke test that boots the image with a stub `/data/options.json` (third-party provider, mem0, a hyphenated http entry, a stdio entry) and asserts on the GENERATED crushrc.
+`validate` job: YAML + schema/translations completeness; `bash -n` and `shellcheck -S error` on run.sh + lib.sh (a full advisory report runs too); `bats tests/`; hadolint (checksum-verified binary, rules waived in `charm-crush/.hadolint.yaml`); actionlint (checksum-verified); the **changelog gate** (`.github/scripts/check_changelog.sh`: `charm-crush/CHANGELOG.md` needs `## [Unreleased]` and a `## [<config.yaml version>]` section; local files only, tested by `tests/changelog_gate.bats`); the **version-bump recency gate** (run.sh, lib.sh and the Dockerfile must not have a commit newer than the last config.yaml commit - see Release process); frenck's official add-on linter; and the **secret scan** (API-key prefixes and RFC 1918 addresses in every tracked text file, `.github` included). `build` job (both arches, QEMU): image build, binary smoke test (crush, ttyd, ha), and a boot-surface smoke test that boots the image with a stub `/data/options.json` (third-party provider, mem0, a hyphenated http entry, a stdio entry) and asserts on the GENERATED crushrc.
 
 Third-party actions are pinned by commit SHA (tag kept as a trailing comment); downloaded binaries (ttyd, crush, ha CLI, hadolint, actionlint) are verified by sha256. Bumping any of them means updating the pin and the hash together.
 
 ## Release process (implicit convention)
 
 Every functional change bumps `version:` in `charm-crush/config.yaml` (patch +0.0.1) in the same commit. Recent commit subjects are `feature summary; bump 1.0.12` style. HA add-ons won't update without a version bump, so never commit a change to `config.yaml`/`run.sh`/`lib.sh`/`Dockerfile` without one.
+
+**Every version bump also ships its changelog entry, in the same change.** HA shows `charm-crush/CHANGELOG.md` in the add-on's Changelog tab. Keep a Changelog format: while working, describe user-facing changes under `## [Unreleased]`; when bumping `version:`, move them under a new `## [x.y.z] - YYYY-MM-DD` heading (newest first, `### Added/Changed/Fixed/Security/Removed`, written for add-on users, no secrets or private addresses - the secret scan covers it) and leave an empty `## [Unreleased]` on top. CI fails if the config.yaml version has no matching section or `## [Unreleased]` is missing. This is in addition to, not instead of, the recency rule below.
 
 **A number that has already shipped doesn't count again.** Supervisor compares the version *string* and nothing else — tree contents, commit dates and file hashes are all invisible to it. So a merge, rebase or fast-forward carrying several commits releases every one of them under whichever number the last bumping commit set, and any commit landing after that without its own bump is permanently unreachable: the store and the install both read the same number, no delta is offered, and no amount of store reloading or repository re-adding can surface it. That is exactly how 1.0.28 failed — `c5e1dac` bumped to it, then `b7354c7` (run.sh option handling + the `mcp_servers` loop) and `051733a` landed unbumped on top, so installs built from any of those three trees reported 1.0.28 and the two later run.sh fixes could not be delivered at all; only `01fcace` (bumping to 1.0.29) did. Sanity check before pushing — the `config.yaml` line must be the *newer* of the two; if `run.sh` names a commit that came after it, the version is stale:
 

@@ -332,6 +332,10 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **Memory-server tool errors**: run `crush logs` / check the add-on log — an entry in `mcp_servers` with no reachable URL or no token will say so; 401 = the token on that entry is wrong.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
+## Changelog
+
+Release notes for every version are in the add-on's **Changelog** tab (`CHANGELOG.md`).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

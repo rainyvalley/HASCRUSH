@@ -267,6 +267,10 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **Memory-server tool errors**: run `crush logs` / check the add-on log — an entry in `mcp_servers` with no reachable URL or no token will say so; 401 = the token on that entry is wrong.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
+## Changelog
+
+Release notes for every version are in [charm-crush/CHANGELOG.md](charm-crush/CHANGELOG.md) (also shown in the add-on's Changelog tab).
+
 ## A note on AI assistance
 
 Parts of this project — code, configuration, and documentation — were written with the help of generative AI. Everything in here was reviewed, tested, and corrected by a human before being committed; nothing was accepted on the model's say-so.
