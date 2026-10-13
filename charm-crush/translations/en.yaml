@@ -114,6 +114,3 @@ configuration:
     description: >-
       Check for a newer Crush release on each add-on start and install it
       (with rollback if the new binary fails its smoke test).
-
-network:
-  7681/tcp: Web Terminal (ttyd)
