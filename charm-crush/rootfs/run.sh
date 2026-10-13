@@ -813,18 +813,18 @@ else
   cd /homeassistant
 fi
 
-# Direct http://<host>:7681 hits from the LAN must NOT reach the root shell:
-# ttyd listens on 0.0.0.0 and the LAN route bypasses HA auth entirely.
-# HA core ingress ALWAYS stamps X-Hass-Source: core.ingress on both the HTTP
-# and WebSocket paths (homeassistant/components/hassio ingress _init_header),
-# and browsers cannot forge that header cross-origin (not CORS-safelisted),
-# so gating on it keeps the ingress panel working while direct :7681 traffic
-# gets HTTP 407 / a refused WS handshake. If a HA core regression ever drops
-# the header the panel fails CLOSED (407), not silently open.
-exec ttyd --port 7681 --writable --ping-interval 30 --max-clients 5 \
-    --auth-header X-Hass-Source \
-    -t "fontSize=$FONT_SIZE" \
-    -t fontFamily=Monaco,Consolas,monospace \
-    -t scrollback=20000 \
-    -t "theme=$COLORS" \
-    $SHELL_CMD
+# Only the Supervisor's ingress proxy may reach the root shell. Two layers:
+#  1. ttyd listens on loopback only (TTYD_BACKEND_*, lib.sh); a socat gate on
+#     the ingress port relays ONLY connections whose source is the Supervisor
+#     ingress address (INGRESS_ADDR, lib.sh) - other containers on the HA
+#     network and the LAN are dropped at accept time. (ttyd cannot bind to
+#     INGRESS_ADDR itself: that address is the Supervisor container's.)
+#  2. defense in depth: ttyd still requires X-Hass-Source, which HA core
+#     ingress always stamps; a regression there fails CLOSED (407).
+# If the gate dies the panel goes dark (fail closed), never open.
+mapfile -t _gate < <(ingress_gate_args)
+socat "${_gate[@]}" &
+mapfile -t _ttyd < <(ttyd_args "$FONT_SIZE" "$COLORS")
+# SHELL_CMD is deliberately word-split (command + args).
+# shellcheck disable=SC2086
+exec ttyd "${_ttyd[@]}" $SHELL_CMD

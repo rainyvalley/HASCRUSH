@@ -132,11 +132,11 @@ RUN echo 'source ~/.bashrc' > /root/.profile && chmod +x /usr/local/bin/run.sh
 
 WORKDIR /homeassistant
 
-# ttyd answers on 7681 or the add-on isn't serving the panel. The check must
-# send the X-Hass-Source header HA core ingress always injects (run.sh gates
-# ttyd on it to block direct LAN :7681 access) or this probe would get 407
-# and the add-on would be flagged unhealthy even though the panel works.
+# ttyd listens on loopback:7682 behind a socat gate on 7681 that only accepts
+# the Supervisor ingress address (see lib.sh), so the probe goes straight to
+# ttyd on loopback (with the X-Hass-Source header ttyd requires, else 407) and
+# also checks that the gate process is alive.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -sf -H 'X-Hass-Source: core.ingress' http://localhost:7681/ || exit 1
+    CMD curl -sf -H 'X-Hass-Source: core.ingress' http://127.0.0.1:7682/ >/dev/null && pgrep -f 'TCP4-LISTEN:7681' >/dev/null || exit 1
 
 CMD ["/usr/local/bin/run.sh"]
