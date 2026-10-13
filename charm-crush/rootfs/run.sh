@@ -342,6 +342,11 @@ fi
 
 # ── LLM provider: ollama (default) or a 3rd-party OpenAI-compatible API ─
 PROVIDER=$(jq -r '.provider // "ollama"' /data/options.json)
+TPID=openai-compat-3p
+# undo a previous start's remap first (provider_reset in rootfs/lib.sh): the
+# persisted rc must never keep pointing at a third-party host this start did
+# not configure
+provider_reset "$TPID"
 if [ "$PROVIDER" = "third_party" ]; then
   TP_URL="${THIRD_PARTY_BASE_URL:-$(jq -r '.third_party_base_url // ""' /data/options.json)}"
   TP_KEY="${THIRD_PARTY_API_KEY:-$(jq -r '.third_party_api_key // ""' /data/options.json)}"
@@ -350,12 +355,10 @@ if [ "$PROVIDER" = "third_party" ]; then
   elif ! safe_url "$TP_URL"; then
     echo "[addon][WARN] third_party_base_url failed charset validation (http/https + URL-safe chars only) - falling back to ollama" >&2
   else
-    TPID=openai-compat-3p
-    sed -i "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
+    provider_remap "$TPID" "$TP_URL"
     # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
     # the stray copy of the rc that left next to it
     rm -f "${crushrc}E"
-    sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
     # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
     # contain any character)

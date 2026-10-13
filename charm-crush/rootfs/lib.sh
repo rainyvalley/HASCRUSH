@@ -215,3 +215,26 @@ apply_model_slot() {
     printf '\nmodel %s %s\n' "$1" "$2" >> "$crushrc"
   fi
 }
+# ── third-party provider remap ───────────────────────────────────────────
+# Needs the global $crushrc. $1 = the third-party provider id run.sh uses.
+# The remap rewrites the PERSISTED rc, which is kept across starts (fallback
+# rc, or a template kept after a failed fetch). Without an undo, switching
+# provider back to ollama - or changing third_party_base_url - left the rc
+# pointing at the OLD third-party host while run.sh exported a DIFFERENT key
+# into it (the Ollama key, or the new third-party key): a credential sent to
+# a host the operator no longer configured. provider_reset restores the
+# ollama-cloud line first, so every start remaps from a clean state. The
+# original base URL of a remapped line is not recorded; it was ollama.com
+# whenever the remap changed it, so that is what is restored.
+provider_reset() {
+  grep -qF -- "$1" "$crushrc" 2>/dev/null || return 0
+  sed -i -e "/provider add $1/s#--base-url \"[^\"]*\"#--base-url \"https://ollama.com/v1\"#" \
+    -e "s#provider add $1#provider add ollama-cloud#" -e "s#$1/#ollama-cloud/#g" "$crushrc"
+}
+# $1 = third-party provider id, $2 = base URL (caller has safe_url-checked
+# it: no # & \ " $ or backtick, so it is inert in the s### replacement and in
+# the double-quoted rc token).
+provider_remap() {
+  sed -i "s#provider add ollama-cloud#provider add $1#; s#ollama-cloud/#$1/#g" "$crushrc"
+  sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$2\"#" "$crushrc"
+}
