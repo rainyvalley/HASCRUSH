@@ -656,15 +656,13 @@ if [ "$TP_ACTIVE" = 1 ]; then
 fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
-# deep model: register if not already registered (escaped, busybox-safe grep)
+# deep model: register if not already registered (register_deep_model in lib.sh)
 if [ -n "$DEEP_MODEL" ]; then
   if ! safe_text "$DEEP_MODEL"; then
     echo "[addon][WARN] crush_deep_model failed charset validation (shell metachars not allowed) - deep model not registered" >&2
     DEEP_MODEL=""
   else
-    ESC=$(printf '%s' "$DEEP_MODEL" | sed 's/[.[\\*+^$()|?{]/\\&/g')
-    grep -qE "^model add .*/$ESC( |$)" "$crushrc" 2>/dev/null || \
-      printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$DEEP_MODEL" >> "$crushrc"
+    register_deep_model "$DEEP_MODEL"
   fi
 fi
 

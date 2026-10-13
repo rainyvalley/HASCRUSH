@@ -247,3 +247,18 @@ tp_model_id() {
     *) printf '%s' "$1" ;;
   esac
 }
+
+# ── deep model registration ──────────────────────────────────────────────
+# Needs the global $crushrc. $1 = model id (caller has safe_text-checked it).
+# Appends a `model add` for $1 unless the rc already registers it, under
+# either the full id or a bare id after some provider prefix. The old check
+# was `^model add .*/ID`, which demands a '/' BEFORE the whole id: a full id
+# like ollama-cloud/glm-5.3 (the option default) never matched its own
+# registration, so the line was appended again on EVERY start, and the late
+# metadata-less re-registration followed the rc's full one. Indented lines
+# (template `if` blocks) count as registered too.
+register_deep_model() {
+  _deep_esc=$(printf '%s' "$1" | sed 's/[.[\\*+^$()|?{]/\\&/g')
+  grep -qE "^[[:space:]]*model add (.*/)?$_deep_esc( |$)" "$crushrc" 2>/dev/null || \
+    printf '\nmodel add %s --can-reason true --reasoning-effort max\n' "$1" >> "$crushrc"
+}
