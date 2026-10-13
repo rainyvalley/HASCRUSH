@@ -478,7 +478,7 @@ mcp_token_fetch() {
 #           the FIRST stdin line (the client half of a token-gated TCP
 #           bridge; the relay tool must be in the image - socat is).
 # Merge is additive by name: entries replace only their own server's line
-# (mcp_remove above), never other servers a central template registers.
+# (mcp_remove, in lib.sh), never other servers a central template registers.
 # Empty/unset or INVALID JSON = no changes; template lines stay authoritative
 # - including a template's mem0 line for crush_config_url users.
 MCP_JSON="${MCP_SERVERS:-$(jq -r '.mcp_servers // "[]"' /data/options.json 2>/dev/null)}"
