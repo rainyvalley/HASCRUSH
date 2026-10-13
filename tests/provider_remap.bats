@@ -54,3 +54,19 @@ teardown() { teardown_tmp; }
   provider_reset openai-compat-3p
   grep -qxF 'provider add ollama-local --type ollama --base-url "http://192.0.2.10:11434/v1"' "$crushrc"
 }
+
+@test "tp_model_id: an ollama-cloud/ option id follows the third-party remap" {
+  [ "$(tp_model_id ollama-cloud/glm-5.3-flash openai-compat-3p)" = "openai-compat-3p/glm-5.3-flash" ]
+}
+
+@test "tp_model_id: ids on other providers and bare ids are untouched" {
+  [ "$(tp_model_id ollama-local/qwen3-vl:4b-instruct openai-compat-3p)" = "ollama-local/qwen3-vl:4b-instruct" ]
+  [ "$(tp_model_id gpt-5 openai-compat-3p)" = "gpt-5" ]
+  [ "$(tp_model_id '' openai-compat-3p)" = "" ]
+}
+
+@test "remap + default slot option keeps the large slot on the registered provider" {
+  provider_remap openai-compat-3p "https://api.example.com/v1"
+  apply_model_slot large "$(tp_model_id ollama-cloud/glm-5.3-flash openai-compat-3p)"
+  grep -qxF 'model large openai-compat-3p/glm-5.3-flash --reasoning-effort high' "$crushrc"
+}

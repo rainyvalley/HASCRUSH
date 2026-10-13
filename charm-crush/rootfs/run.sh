@@ -343,6 +343,7 @@ fi
 # ── LLM provider: ollama (default) or a 3rd-party OpenAI-compatible API ─
 PROVIDER=$(jq -r '.provider // "ollama"' /data/options.json)
 TPID=openai-compat-3p
+TP_ACTIVE=0
 # undo a previous start's remap first (provider_reset in rootfs/lib.sh): the
 # persisted rc must never keep pointing at a third-party host this start did
 # not configure
@@ -356,6 +357,7 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon][WARN] third_party_base_url failed charset validation (http/https + URL-safe chars only) - falling back to ollama" >&2
   else
     provider_remap "$TPID" "$TP_URL"
+    TP_ACTIVE=1
     # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
     # the stray copy of the rc that left next to it
     rm -f "${crushrc}E"
@@ -646,6 +648,12 @@ LARGE_MODEL="${CRUSH_LARGE_MODEL:-${_mopts[0]}}"
 SMALL_MODEL="${CRUSH_SMALL_MODEL:-${_mopts[1]}}"
 DEEP_MODEL="${CRUSH_DEEP_MODEL:-${_mopts[2]}}"
 EFFORT="${CRUSH_REASONING_EFFORT:-${_mopts[3]}}"
+if [ "$TP_ACTIVE" = 1 ]; then
+  # the option defaults name ollama-cloud/...; follow the remap (lib.sh)
+  LARGE_MODEL=$(tp_model_id "$LARGE_MODEL" "$TPID")
+  SMALL_MODEL=$(tp_model_id "$SMALL_MODEL" "$TPID")
+  DEEP_MODEL=$(tp_model_id "$DEEP_MODEL" "$TPID")
+fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
 # deep model: register if not already registered (escaped, busybox-safe grep)

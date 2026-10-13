@@ -238,3 +238,12 @@ provider_remap() {
   sed -i "s#provider add ollama-cloud#provider add $1#; s#ollama-cloud/#$1/#g" "$crushrc"
   sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$2\"#" "$crushrc"
 }
+# Model ids from options/env name the ollama-cloud provider by default; when
+# the third-party remap is active they must follow it, or the slot is set to
+# a provider the rc no longer registers. $1 = model id, $2 = provider id.
+tp_model_id() {
+  case "$1" in
+    ollama-cloud/*) printf '%s/%s' "$2" "${1#ollama-cloud/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
