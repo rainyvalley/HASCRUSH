@@ -351,7 +351,10 @@ if [ "$PROVIDER" = "third_party" ]; then
     echo "[addon][WARN] third_party_base_url failed charset validation (http/https + URL-safe chars only) - falling back to ollama" >&2
   else
     TPID=openai-compat-3p
-    sed -iE "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
+    sed -i "s#provider add ollama-cloud#provider add $TPID#; s#ollama-cloud/#$TPID/#g" "$crushrc"
+    # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
+    # the stray copy of the rc that left next to it
+    rm -f "${crushrc}E"
     sed -i "s#--base-url \"https://ollama.com/v1\"#--base-url \"$TP_URL\"#" "$crushrc"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
     # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
