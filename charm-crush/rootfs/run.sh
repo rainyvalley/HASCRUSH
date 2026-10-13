@@ -528,10 +528,11 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     MCP_TOK=$(echo "$MCP_ENTRY" | jq -r '.token // ""' | tr -d '\r\n[:space:]')
     MCP_TOK_URL=$(echo "$MCP_ENTRY" | jq -r '.token_url // ""' | tr -d '\r\n')
     mcp_token_fetch "$MCP_NAME" "$MCP_TOK" "$MCP_TOK_URL"
+    MCP_TOKVAR=$(mcp_token_var "$MCP_NAME")   # '-' is legal in names, not in env vars (lib.sh)
     if [ -n "$MCP_URL" ]; then
       if [ -n "$MCP_TOK" ]; then
-        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
-        printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $MCP_TOKEN_%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_NAME" >> "$crushrc"
+        export "${MCP_TOKVAR}=${MCP_TOK}"
+        printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_TOKVAR" >> "$crushrc"
       else
         # no token resolves: still wire the server (LAN servers may not need
         # auth) - same posture as mem0's token fetch failure
@@ -588,12 +589,12 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         *[!0-9]*) echo "[addon][WARN] mcp_servers '$MCP_NAME': timeout must be numeric - entry skipped" >&2; continue ;;
       esac
       if [ -n "$MCP_TOK" ]; then
-        export "MCP_TOKEN_${MCP_NAME}=${MCP_TOK}"
+        export "${MCP_TOKVAR}=${MCP_TOK}"
         # single-quoted rc token around the sh -c body keeps the variable
         # UNEXPANDED in the stored rc (resolved when crush launches the
         # server). The printf "%s\n" newline inside is written as literal
         # \n here and becomes a real newline inside the inner sh.
-        MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$MCP_TOKEN_${MCP_NAME}\"; $MCP_GATE; }'"
+        MCP_RC="mcp add $MCP_NAME --type stdio --command sh --args -c --args '{ printf \"%s\\n\" \"\$${MCP_TOKVAR}\"; $MCP_GATE; }'"
       else
         MCP_RC="mcp add $MCP_NAME --type stdio --command \"$MCP_CMD\"$MCP_ARGS_LINE"
         # no token resolves: still wire the server (a bare relay is the

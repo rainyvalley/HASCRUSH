@@ -199,6 +199,13 @@ mcp_sanitize() {
   mv "$_mcp_sz_tmp" "$crushrc" 2>/dev/null || true
 }
 
+# ── MCP token env var name ───────────────────────────────────────────────
+# Server names may contain '-' (run.sh accepts [A-Za-z0-9_-]), env var names
+# may not: `export MCP_TOKEN_home-assistant=...` fails, which under run.sh's
+# set -e aborted the whole boot, and the rc's $MCP_TOKEN_home-assistant
+# expanded as $MCP_TOKEN_home followed by "-assistant". Map '-' to '_'.
+mcp_token_var() { printf 'MCP_TOKEN_%s' "${1//-/_}"; }
+
 # ── model slot rewiring ──────────────────────────────────────────────────
 # Needs the global $crushrc (set by run.sh / tests).
 apply_model_slot() {
