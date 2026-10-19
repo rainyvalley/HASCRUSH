@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-10-18
+
+### Fixed
+- **The touch bar now floats above the on-screen keyboard.** The software
+  keyboard does not shrink the page, so the bar used to stay behind it; it
+  now follows the visible area (and the terminal shrinks to match), keeping
+  Ctrl/Alt/Tab/Esc/Del/Paste reachable while typing, and returns to the
+  bottom when the keyboard closes.
+
 ## [1.0.35] - 2026-10-18
 
 ### Added

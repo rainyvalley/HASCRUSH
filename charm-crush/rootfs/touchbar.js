@@ -210,8 +210,11 @@
   /* ── the bar ───────────────────────────────────────────────────────── */
   function injectCss() {
     var c = COLORS;
+    /* --hassbar-shift tracks how much of the LAYOUT viewport the on-screen
+     * keyboard (or any other browser chrome) covers; the fixed bar and the
+     * paste box ride above it, and the terminal shrinks so no row hides. */
     var css = [
-      '#hassbar{position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;',
+      '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;display:flex;',
       'align-items:stretch;gap:6px;padding:4px 6px calc(4px + env(safe-area-inset-bottom, 0px));',
       'background:' + c.bg + ';border-top:1px solid ' + c.border + ';',
       'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
@@ -223,8 +226,9 @@
       '#hassbar button.hb-sticky.on{background:' + c.accent + ';color:' + c.onaccent + ';',
       'border-color:transparent;font-weight:700;}',
       '#hassbar button:active{opacity:0.7;}',
-      '#terminal-container{height:calc(100% - ' + BAR_H + 'px);}',
-      '#hassbar-paste{position:fixed;left:50%;transform:translateX(-50%);bottom:' + (BAR_H + 8) + 'px;',
+      '#terminal-container{height:calc(100% - ' + BAR_H + 'px - var(--hassbar-shift, 0px));}',
+      '#hassbar-paste{position:fixed;left:50%;transform:translateX(-50%);',
+      'bottom:calc(' + (BAR_H + 8) + 'px + var(--hassbar-shift, 0px));',
       'z-index:9999;display:flex;gap:6px;width:min(92vw,480px);padding:8px;',
       'background:' + c.bg + ';border:1px solid ' + c.border + ';border-radius:10px;}',
       '#hassbar-paste textarea{flex:1 1 auto;min-height:2.6em;border-radius:8px;',
@@ -308,8 +312,48 @@
     };
     document.body.appendChild(bar);
     paintBar();
+    watchViewport();
     var t = term();
     if (t && typeof t.fit === 'function') { try { t.fit(); } catch (e) { /* ignore */ } }
+  }
+
+  /* Keep the bar where the user can actually see it: when the on-screen
+   * keyboard opens, the LAYOUT viewport (what position:fixed is relative to)
+   * does not shrink - only the VISUAL viewport does (most mobile browsers).
+   * --hassbar-shift = the covered height; the bar and paste box ride above it
+   * and the terminal shrinks by the same amount, then refits (debounced) so
+   * no rows are stranded behind the keyboard. Browsers that resize the layout
+   * viewport instead report a zero shift and the plain bottom:0 placement is
+   * already correct. */
+  var lastShift = -1;
+  var fitTimer = null;
+  function viewportShift() {
+    var vp = window.visualViewport;
+    if (!vp || typeof vp.height !== 'number') return 0;
+    var shift = window.innerHeight - vp.height - (vp.offsetTop || 0);
+    if (!isFinite(shift) || shift < 0) shift = 0;
+    return Math.round(shift);
+  }
+  function syncViewport() {
+    var shift = viewportShift();
+    if (shift === lastShift) return;
+    lastShift = shift;
+    document.documentElement.style.setProperty('--hassbar-shift', shift + 'px');
+    if (fitTimer) clearTimeout(fitTimer);
+    fitTimer = setTimeout(function () {
+      var t = term();
+      if (t && typeof t.fit === 'function') { try { t.fit(); } catch (e) { /* ignore */ } }
+    }, 120);
+  }
+  function watchViewport() {
+    var vp = window.visualViewport;
+    if (vp && typeof vp.addEventListener === 'function') {
+      vp.addEventListener('resize', syncViewport);
+      vp.addEventListener('scroll', syncViewport);
+    }
+    window.addEventListener('resize', syncViewport);
+    window.addEventListener('orientationchange', syncViewport);
+    syncViewport();
   }
 
   /* Wait for the ttyd client to expose window.term (async token fetch), then
