@@ -152,13 +152,13 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" -H "Content-Type: applicati
 
 `HA_URL` is `http://supervisor/core`, which only resolves inside add-ons. There is no option for a Home Assistant token; Home Assistant provides one to the add-on. Long-lived access tokens from your profile page don't work against `http://supervisor`.
 
-The add-on uses the default Supervisor role. It can reach Core (`/core`, `/homeassistant`) and read Supervisor info, and the following are expected to be refused:
+The add-on runs with the Supervisor `manager` role: it can use the Core API, read Supervisor info, and run `ha core check`, `ha core logs`, `ha core stats` and `ha supervisor logs`. The following are expected to be refused:
 
 | Attempt | Result |
 |---|---|
 | `/hassio/...` or `/api/hassio/...` paths | 403 |
 | `supervisor.*` / `hassio.*` WebSocket commands | `unauthorized`; use the `ha` CLI or REST |
-| Add-on, backup, host or OS management | 403 (needs a higher role) |
+| Admin-only endpoints (`/os/ssh/authorized_keys`, `/addons/<slug>/security`, ...) | 403 (needs the `admin` role) |
 | docker CLI or socket | not available (no `docker_api` / `full_access`) |
 
 At each start the add-on log prints an OK or `DENIED <code>` line for the Supervisor and Core endpoints. A default `CRUSH.md` is written to `/homeassistant/.crushdata/` on first start with the same limits, so the agent doesn't keep retrying refused calls. Your edits to it are kept.

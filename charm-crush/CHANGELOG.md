@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.49] - 2026-10-19
+
+### Fixed
+- **`ha core check`, `ha core logs`, `ha core stats` and `ha supervisor logs` work again.** Since 1.0.45 the add-on ran with the default Supervisor role, which refuses those commands with 403 even though the docs and the agent's `CRUSH.md` tell Crush to use them. The add-on now declares `hassio_role: manager` (not admin). Reinstall or update the add-on so the Supervisor applies the new role.
+
 ### Changed
 - Documentation rewritten to describe what the add-on does today and how to set it up; the store-rating and Supervisor-token sections were removed.
+- Startup self-check no longer mentions the role in its OK line.
 
 ## [1.0.48] - 2026-10-19
 

@@ -86,7 +86,7 @@ else
   _core_pid=$!
   SUP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/info || true)
   case "$SUP_CODE" in
-    200) echo "[addon] Supervisor API: OK (token accepted, default role)" ;;
+    200) echo "[addon] Supervisor API: OK (token accepted)" ;;
     401) echo "[addon][WARN] Supervisor API: token DENIED 401 (invalid/re-keyed) - update or reinstall the add-on" ;;
     403) echo "[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on" ;;
     *)   echo "[addon][WARN] Supervisor API: unreachable (HTTP ${SUP_CODE:-none}) - Supervisor restarting or DNS issue" ;;
@@ -179,7 +179,7 @@ NEVER attempt or retry these - they are denied BY DESIGN; one try at most,
 then report to the user instead:
 - `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` -> 403 (blacklisted for every add-on)
 - websocket `supervisor.*`/`hassio.*` commands -> `unauthorized` (blocked since Supervisor 2026.08) - use the `ha` CLI or REST
-- Supervisor-side management (`/addons/...`, `/backups`, `/os/...`, `/host/...`, `/store`) -> denied: this add-on runs the DEFAULT Supervisor role by design (no manager/admin)
+- admin-only Supervisor endpoints (`/os/ssh/authorized_keys`, `/addons/<slug>/security`, ...) -> 403: this add-on runs the MANAGER Supervisor role, not admin
 - docker CLI -> no docker socket; the USER may toggle Protection mode if ever needed
 - Profile-page long-lived tokens do NOT work on `http://supervisor`
 
