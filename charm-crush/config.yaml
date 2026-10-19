@@ -6,8 +6,6 @@ url: https://github.com/rainyvalley/HASCRUSH
 arch:
   - amd64
   - aarch64
-# startup removed: 'application' is the Supervisor default
-# boot removed: 'auto' is the Supervisor default
 init: false   # s6-overlay must be pid 1 (init:true re-parents it -> "can only run as pid 1")
 ingress: true
 ingress_port: 7681

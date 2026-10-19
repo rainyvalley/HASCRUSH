@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (worst case 5 s instead of 10 s); the log output is unchanged.
 - Image build polls for ttyd's client page every 0.2 s instead of every
   second, shaving up to a second off the build.
+- Housekeeping only, no behaviour change: the Model Options-tab text no
+  longer mentions the touch bar's removed `Model` key, and stale source
+  comments were dropped.
 
 ## [1.0.46] - 2026-10-18
 
