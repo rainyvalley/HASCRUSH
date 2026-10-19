@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.43] - 2026-10-18
+
+### Changed
+- **`Touch Bar Offset` now defaults to -40**, a value tuned on iOS/iPadOS
+  where the browser over-reports the keyboard height by a small amount.
+  Android and desktop setups usually want 0; existing installs keep whatever
+  value they have already saved.
+
 ## [1.0.42] - 2026-10-18
 
 ### Fixed

@@ -59,7 +59,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
-| `touch_bar_offset` | `0` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. Applies on add-on restart |
+| `touch_bar_offset` | `-40` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. **-40 is the default and was tuned on iOS/iPadOS**; Android/desktop usually want `0`. Existing installs keep their saved value. Applies on add-on restart |
 | `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |

@@ -781,7 +781,7 @@ fi
 # One jq spawn for the seven terminal-web options (NUL-delimited, same pattern
 # as the model-slot read above). touch_bar uses the if-form, not // : jq's //
 # treats an explicit false as unset, and an opt-in toggle must stay falseable.
-mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // 0), (if .touch_bar_debug == null then false else .touch_bar_debug end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // -40), (if .touch_bar_debug == null then false else .touch_bar_debug end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
 FONT_SIZE="${_topts[0]}"
 # FONT_SIZE is spliced into an UNQUOTED -t token, so force it to digits: the
 # jq default only covers a missing key, not a string the operator (or anything

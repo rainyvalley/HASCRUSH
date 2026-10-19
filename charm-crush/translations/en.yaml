@@ -136,7 +136,8 @@ configuration:
       Nudges the touch bar's keyboard lift on phones/browsers that report the
       keyboard height imprecisely. Negative values lower the bar (use one when
       a dark band stays between the keys and the keyboard); positive values
-      lift it higher (when the keys hide behind the keyboard). Range -400 to
+      lift it higher (when the keys hide behind the keyboard). Default -40,
+      tuned on iOS/iPadOS; Android and desktop usually want 0. Range -400 to
       400. Applies on add-on restart.
   touch_bar_debug:
     name: Touch Bar Debug
