@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.46] - 2026-10-18
+
+### Changed
+- **The touch bar only appears on touch devices.** A desktop browser (fine
+  primary pointer) no longer gets the key row at all: no bar, no space
+  reserved, the terminal uses the full window.
+- **The `Model` key was removed** from the touch bar (crush's model picker
+  did not open reliably from it). Use `/` → *models* in the TUI, or the
+  `Ctrl+L` binding.
+
 ## [1.0.45] - 2026-10-18
 
 ### Security

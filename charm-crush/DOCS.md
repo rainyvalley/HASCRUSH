@@ -61,7 +61,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
-| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
+| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once. Shown only on touch devices (a desktop browser with a fine pointer gets no bar and keeps the full terminal); it floats above the on-screen keyboard. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
 | `touch_bar_offset` | `0` | Extra px for the touch bar's keyboard lift (-400..400). `0` = platform default: **-40 on iOS/iPadOS** (the browser over-reports the keyboard there) and **0 on Android/desktop**; any non-zero value overrides that outright (negative lowers the bar if a band stays under the keys, positive lifts it if keys hide). Existing installs keep their saved value; applies on add-on restart |
 | `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
 | `working_directory` | `/homeassistant` | Where crush starts |
@@ -89,7 +89,7 @@ Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_UR
 ## Models: choose, add, refresh
 
 **Choosing at runtime** — in the TUI:
-1. Press **Ctrl+L** (or tap **Model** on the touch bar) → the model picker; `/` → **models** does the same.
+1. Type `/` → **models** (crush's own keybinding is **Ctrl+L**) → the model picker.
 2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`), including the auto-discovered catalog.
 3. `DeepSeek V4.1 Flash` is the default for everything (set `crush_reasoning_effort` to `max` for deep, thinking-heavy tasks; `GLM 5.3 Flash` and `GLM 5.3` stay available in the picker); pick a vision model and drop in an image to inspect it.
 

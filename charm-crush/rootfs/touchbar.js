@@ -173,18 +173,15 @@
   }
   /* Dispatch a real keydown at xterm's hidden textarea; xterm.js evaluates
    * the event exactly like a physical key (keymap + keypad mode + modifiers). */
-  function dispatchKey(key, code, mods) {
+  function dispatchKey(key, code) {
     var el = textareaEl();
     if (!el) return false;
     try {
       if (document.activeElement !== el) el.focus();
     } catch (e) { /* ignore */ }
-    var init = { bubbles: true, cancelable: true, key: key, code: code };
-    if (mods) {
-      if (mods.ctrl) init.ctrlKey = true;
-      if (mods.alt) init.altKey = true;
-    }
-    el.dispatchEvent(new KeyboardEvent('keydown', init));
+    el.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true, cancelable: true, key: key, code: code
+    }));
     return true;
   }
 
@@ -295,11 +292,7 @@
     { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab' },
     { id: 'esc',   label: 'Esc',   sticky: false, key: 'Escape', code: 'Escape' },
     { id: 'del',   label: 'Del',   sticky: false, key: 'Delete', code: 'Delete' },
-    { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' },
-    /* Ctrl+L opens crush's model picker (its own binding; ctrl+m collides
-     * with Enter) - the live, discovery-fed model list. */
-    { id: 'model', label: 'Model', sticky: false, key: 'l', code: 'KeyL',
-      mods: { ctrl: true } }
+    { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' }
   ];
 
   function paint() {
@@ -307,8 +300,22 @@
     paintBar();
   }
 
+  /* The bar is a touch affordance: on a desktop (fine primary pointer) the
+   * keyboard already has every key, so nothing is rendered at all - no bar,
+   * no reserved rows, the terminal keeps its full height. Unknown/old
+   * browsers keep the bar (fail open, it is harmless with a mouse). */
+  function isTouchView() {
+    try {
+      if (window.matchMedia) {
+        return window.matchMedia('(pointer: coarse)').matches;
+      }
+      return (window.navigator && (window.navigator.maxTouchPoints || 0)) > 0;
+    } catch (e) { return true; }
+  }
+
   function mountBar() {
     if (document.getElementById('hassbar')) return;
+    if (!isTouchView()) return;
     injectCss();
     document.documentElement.style.setProperty('--hassbar-h', BAR_H + 'px');
     var bar = document.createElement('div');
@@ -344,7 +351,7 @@
         }
         /* Esc / Del: one-shot synthetic keydown; any latches compose at the
          * socket layer with the sequence xterm produces. */
-        dispatchKey(b.key, b.code, b.mods);
+        dispatchKey(b.key, b.code);
         paint();
       };
       /* Block focus stealing (clicks must not close the soft keyboard). */
@@ -498,6 +505,7 @@
   /* Wait for the ttyd client to expose window.term (async token fetch), then
    * mount. Give up quietly after 30s - a changed client must never break the
    * terminal. */
+  if (!isTouchView()) return; /* desktop: no bar, no polling */
   var waited = 0;
   (function wait() {
     if (term() && term().paste !== undefined && textareaEl()) { mountBar(); return; }

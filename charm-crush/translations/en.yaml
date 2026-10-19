@@ -124,7 +124,8 @@ configuration:
   touch_bar:
     name: Touch Bar
     description: >-
-      Small key bar at the bottom of the web terminal, for touch screens:
+      Small key bar at the bottom of the web terminal, shown on touch devices
+      only (desktop browsers keep the full terminal):
       Ctrl, Alt and Tab latch like held keys (the next key pressed composes
       them, then they release), while Esc, Delete and Paste fire immediately.
       The bar floats above the on-screen keyboard so it stays reachable while
