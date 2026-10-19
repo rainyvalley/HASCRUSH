@@ -20,15 +20,21 @@
 
   var cfg = window.__HASSBAR || {};
   var THEME = cfg.theme === 'light' ? 'light' : 'dark';
-  var BAR_H = 48;
+  var BAR_H = 44;
 
+  /* Floating pill styling: no full-width backdrop strip - the bar element is
+   * transparent and click-through outside the buttons, so nothing dark sits
+   * between the terminal and the keyboard; each key is a compact translucent
+   * pill that stays legible over terminal text. */
   var COLORS = THEME === 'light'
-    ? { bg: 'rgba(239,241,245,0.94)', border: 'rgba(76,79,105,0.25)',
-        btn: 'rgba(76,79,105,0.08)', fg: '#4c4f69',
-        accent: '#8839ef', onaccent: '#eff1f5' }
-    : { bg: 'rgba(30,30,46,0.94)', border: 'rgba(205,214,244,0.18)',
-        btn: 'rgba(205,214,244,0.08)', fg: '#cdd6f4',
-        accent: '#cba6f7', onaccent: '#1e1e2e' };
+    ? { pill: 'rgba(239,241,245,0.88)', fg: '#4c4f69', fgDim: 'rgba(76,79,105,0.70)',
+        press: 'rgba(76,79,105,0.14)', hair: 'rgba(76,79,105,0.14)',
+        accent: '#8839ef', onAccent: '#eff1f5', shadow: '0 1px 3px rgba(76,79,105,0.28)',
+        card: 'rgba(239,241,245,0.96)' }
+    : { pill: 'rgba(30,30,46,0.78)', fg: 'rgba(205,214,244,0.94)', fgDim: 'rgba(205,214,244,0.64)',
+        press: 'rgba(205,214,244,0.18)', hair: 'rgba(205,214,244,0.16)',
+        accent: '#cba6f7', onAccent: '#1e1e2e', shadow: '0 1px 3px rgba(0,0,0,0.45)',
+        card: 'rgba(30,30,46,0.96)' };
 
   /* ── latch state ───────────────────────────────────────────────────── */
   var sticky = { ctrl: false, alt: false, tab: false };
@@ -211,30 +217,41 @@
   function injectCss() {
     var c = COLORS;
     /* --hassbar-shift tracks how much of the LAYOUT viewport the on-screen
-     * keyboard (or any other browser chrome) covers; the fixed bar and the
-     * paste box ride above it, and the terminal shrinks so no row hides. */
+     * keyboard (or any other browser chrome) covers; the floating keys ride
+     * above it and the terminal shrinks so no row hides. */
     var css = [
-      '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;display:flex;',
-      'align-items:stretch;gap:6px;padding:4px 6px calc(4px + env(safe-area-inset-bottom, 0px));',
-      'background:' + c.bg + ';border-top:1px solid ' + c.border + ';',
+      '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;',
+      'display:flex;align-items:center;justify-content:center;gap:8px;',
+      'padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));',
+      'background:transparent;border:0;box-shadow:none;pointer-events:none;',
       'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
       '-webkit-tap-highlight-color:transparent;}',
-      '#hassbar button{flex:1 1 0;min-width:0;min-height:' + '40px;border-radius:10px;',
-      'border:1px solid ' + c.border + ';background:' + c.btn + ';color:' + c.fg + ';',
-      "font:600 13px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:0 4px;margin:0;",
+      '#hassbar button{pointer-events:auto;flex:0 0 auto;min-width:44px;min-height:32px;',
+      'margin:0;padding:0 13px;border:0;border-radius:999px;',
+      'background:' + c.pill + ';color:' + c.fg + ';box-shadow:' + c.shadow + ';',
+      '-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);',
+      "font:600 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;",
+      'letter-spacing:0.01em;',
+      'transition:background 0.12s ease,color 0.12s ease,box-shadow 0.12s ease,transform 0.06s ease;',
       'touch-action:manipulation;user-select:none;-webkit-user-select:none;}',
-      '#hassbar button.hb-sticky.on{background:' + c.accent + ';color:' + c.onaccent + ';',
-      'border-color:transparent;font-weight:700;}',
-      '#hassbar button:active{opacity:0.7;}',
+      '#hassbar button:active{transform:scale(0.94);background:' + c.press + ';}',
+      '#hassbar button.hb-sticky{color:' + c.fgDim + ';}',
+      '#hassbar button.hb-sticky.on{background:' + c.accent + ';color:' + c.onAccent + ';',
+      'box-shadow:0 0 0 1px ' + c.hair + ';}',
       '#terminal-container{height:calc(100% - ' + BAR_H + 'px - var(--hassbar-shift, 0px));}',
       '#hassbar-paste{position:fixed;left:50%;transform:translateX(-50%);',
       'bottom:calc(' + (BAR_H + 8) + 'px + var(--hassbar-shift, 0px));',
-      'z-index:9999;display:flex;gap:6px;width:min(92vw,480px);padding:8px;',
-      'background:' + c.bg + ';border:1px solid ' + c.border + ';border-radius:10px;}',
-      '#hassbar-paste textarea{flex:1 1 auto;min-height:2.6em;border-radius:8px;',
-      'border:1px solid ' + c.border + ';background:transparent;color:' + c.fg + ';padding:6px;}',
-      '#hassbar-paste button{flex:0 0 auto;border-radius:8px;border:1px solid ' + c.border + ';',
-      'background:' + c.btn + ';color:' + c.fg + ';padding:0 14px;}'
+      'z-index:9999;display:flex;gap:8px;width:min(92vw,480px);padding:10px;',
+      'background:' + c.card + ';border:1px solid ' + c.hair + ';border-radius:14px;',
+      '-webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%);',
+      'box-shadow:' + c.shadow + ';}',
+      '#hassbar-paste textarea{flex:1 1 auto;min-height:2.4em;border-radius:9px;',
+      'border:1px solid ' + c.hair + ';background:transparent;color:' + c.fg + ';padding:7px;',
+      'font:inherit;}',
+      '#hassbar-paste textarea:focus{outline:none;box-shadow:inset 0 0 0 1px ' + c.hair + ';}',
+      '#hassbar-paste button{flex:0 0 auto;border:0;border-radius:9px;background:' + c.press + ';',
+      'color:' + c.fg + ';padding:0 14px;font:600 13px/1 system-ui,sans-serif;}',
+      '#hassbar-paste button:active{transform:scale(0.96);}'
     ].join('\n');
     var st = document.createElement('style');
     st.id = 'hassbar-css';

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-10-18
+
+### Changed
+- **The touch bar no longer draws a bar.** The full-width dark strip is gone:
+  the six keys are now compact floating pills (frosted, rounded, theme-aware)
+  and the space around them is click-through, so the terminal stays visible
+  right up to the keys. The bar's footprint shrank accordingly.
+
 ## [1.0.37] - 2026-10-18
 
 ### Fixed
