@@ -317,22 +317,55 @@
     if (t && typeof t.fit === 'function') { try { t.fit(); } catch (e) { /* ignore */ } }
   }
 
-  /* Keep the bar where the user can actually see it: when the on-screen
-   * keyboard opens, the LAYOUT viewport (what position:fixed is relative to)
-   * does not shrink - only the VISUAL viewport does (most mobile browsers).
-   * --hassbar-shift = the covered height; the bar and paste box ride above it
-   * and the terminal shrinks by the same amount, then refits (debounced) so
-   * no rows are stranded behind the keyboard. Browsers that resize the layout
-   * viewport instead report a zero shift and the plain bottom:0 placement is
-   * already correct. */
+  /* Keep the bar where the user can actually see it. Two keyboard models:
+   *  - top-level page: the keyboard shrinks the VISUAL viewport while the
+   *    layout viewport (what position:fixed uses) stays put;
+   *  - HA ingress panel: our page runs in a same-origin IFRAME and the
+   *    keyboard shrinks the PARENT's visual viewport - our own window sees
+   *    nothing, which is why a plain visualViewport check left the bar behind
+   *    the keyboard. Walk the accessible frame chain instead and measure how
+   *    much of each frame's bottom edge is covered.
+   * --hassbar-shift = total covered height; the bar and paste box ride above
+   * it and the terminal shrinks by the same amount, then refits (debounced).
+   * Browsers that resize the layout viewport instead report zero and are
+   * already correct, as is a cross-origin parent (nothing to measure). */
   var lastShift = -1;
   var fitTimer = null;
+  function coveredBy(win) {
+    try {
+      var vp = win.visualViewport;
+      if (!vp || typeof vp.height !== 'number') return 0;
+      var s = win.innerHeight - vp.height - (vp.offsetTop || 0);
+      if (!isFinite(s) || s < 0) return 0;
+      return Math.round(s);
+    } catch (e) { return 0; }
+  }
+  /* How far each ancestor frame's bottom edge sits below the visible area of
+   * its own parent (that is exactly the part of OUR page the keyboard hides,
+   * because our document's bottom edge is that frame's bottom edge). */
+  function ancestorShift() {
+    var total = 0;
+    var w = window;
+    try {
+      for (var i = 0; i < 5; i++) {
+        var fe = w.frameElement;
+        if (!fe || typeof fe.getBoundingClientRect !== 'function') break;
+        var p = w.parent;
+        if (!p || p === w) break;
+        var pv = p.visualViewport;
+        if (pv && typeof pv.height === 'number') {
+          var r = fe.getBoundingClientRect();
+          var hidden = r.bottom - ((pv.offsetTop || 0) + pv.height);
+          if (isFinite(hidden) && hidden > 0) total += Math.round(hidden);
+        }
+        w = p;
+      }
+    } catch (e) { /* cross-origin ancestor: nothing measurable */ }
+    return total;
+  }
   function viewportShift() {
-    var vp = window.visualViewport;
-    if (!vp || typeof vp.height !== 'number') return 0;
-    var shift = window.innerHeight - vp.height - (vp.offsetTop || 0);
-    if (!isFinite(shift) || shift < 0) shift = 0;
-    return Math.round(shift);
+    var s = coveredBy(window) + ancestorShift();
+    return s > 0 ? Math.round(s) : 0;
   }
   function syncViewport() {
     var shift = viewportShift();
@@ -345,15 +378,39 @@
       if (t && typeof t.fit === 'function') { try { t.fit(); } catch (e) { /* ignore */ } }
     }, 120);
   }
-  function watchViewport() {
-    var vp = window.visualViewport;
-    if (vp && typeof vp.addEventListener === 'function') {
-      vp.addEventListener('resize', syncViewport);
-      vp.addEventListener('scroll', syncViewport);
+  /* Watch the viewport events of our window AND every same-origin ancestor:
+   * inside the ingress iframe it is the parent's visual viewport that moves. */
+  function watchWindow(win, depth) {
+    try {
+      var vp = win.visualViewport;
+      if (vp && typeof vp.addEventListener === 'function') {
+        vp.addEventListener('resize', syncViewport);
+        vp.addEventListener('scroll', syncViewport);
+      }
+      if (typeof win.addEventListener === 'function') {
+        win.addEventListener('resize', syncViewport);
+      }
+    } catch (e) { /* ignore */ }
+    if (depth > 0) {
+      try {
+        if (win.parent && win.parent !== win) watchWindow(win.parent, depth - 1);
+      } catch (e) { /* ignore */ }
     }
-    window.addEventListener('resize', syncViewport);
+  }
+  function watchViewport() {
+    watchWindow(window, 4);
     window.addEventListener('orientationchange', syncViewport);
+    /* Keyboard animations can land without a resize event on some embedded
+     * browsers; a cheap poll plus focus re-checks cover those. */
+    window.addEventListener('focusin', nudgeViewport);
+    window.addEventListener('focusout', nudgeViewport);
+    setInterval(syncViewport, 500);
     syncViewport();
+  }
+  function nudgeViewport() {
+    setTimeout(syncViewport, 150);
+    setTimeout(syncViewport, 450);
+    setTimeout(syncViewport, 900);
   }
 
   /* Wait for the ttyd client to expose window.term (async token fetch), then

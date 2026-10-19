@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-10-18
+
+### Fixed
+- **The touch bar also follows the keyboard inside the Home Assistant panel.**
+  The add-on page runs in a same-origin iframe there, and the keyboard
+  shrinks the panel's (parent) viewport rather than the page's own, so the
+  bar still stayed behind it in 1.0.36. The bar now measures the parent
+  frame chain too (with a light poll for browsers that skip resize events),
+  and lifts above the keyboard in the sidebar panel and in a full browser
+  tab alike.
+
 ## [1.0.36] - 2026-10-18
 
 ### Fixed
