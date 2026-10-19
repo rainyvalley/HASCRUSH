@@ -54,12 +54,15 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default - **picklist** of the models this release knows |
 | `crush_large_model_custom` | *(empty)* | Free-form model id that **overrides** the daily picklist when set (e.g. a LAN Ollama tag) |
 | `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) - picklist |
+| `crush_small_model_custom` | *(empty)* | Free-form model id that **overrides** the helper picklist when set |
+| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep reasoning model - picklist; same model as the daily default, run with `crush_reasoning_effort: max` for deep work |
+| `crush_deep_model_custom` | *(empty)* | Free-form model id that **overrides** the deep picklist when set |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
-| `touch_bar_offset` | `-40` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. **-40 is the default and was tuned on iOS/iPadOS**; Android/desktop usually want `0`. Existing installs keep their saved value. Applies on add-on restart |
+| `touch_bar_offset` | `0` | Extra px for the touch bar's keyboard lift (-400..400). `0` = platform default: **-40 on iOS/iPadOS** (the browser over-reports the keyboard there) and **0 on Android/desktop**; any non-zero value overrides that outright (negative lowers the bar if a band stays under the keys, positive lifts it if keys hide). Existing installs keep their saved value; applies on add-on restart |
 | `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -153,7 +156,7 @@ Entry forms:
 - **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`search`, `browser` above).
 - **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout`.
 - **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `cad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
-- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log. — a LAN server may legitimately not need auth.
+- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log — a LAN server may legitimately not need auth.
 
 **Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
 
@@ -162,6 +165,8 @@ Secrets never land in the generated crushrc: the add-on exports resolved tokens 
 ## Central config (optional)
 
 `crush_config_url` = any **plain-HTTP URL** of a crushrc text file. The natural host: another machine already running Crush (share its rc file), or any static server (Caddy, `python -m http.server`, NAS, GitHub Pages). On start the add-on fetches it; keys stay out of the template — the rc resolves secrets from the environment the add-on exports, so one template serves a fleet safely.
+
+Validated at fetch time (since 1.0.22): the URL must be http(s) with URL-safe characters only, the fetched file is capped at 1 MB, and it must still look like a crushrc (`provider` / `model` markers) — anything else falls back to the built-in config with a `[addon][WARN]` in the log. Plain `http://` URLs warn explicitly: the script could be modified in transit on the wire, so prefer `https://` where the host supports it.
 
 **Config-version check (since 1.0.24)**: a central template stamped `# config-version: N` is verified at every start against the matching `/config.version` published beside it. Current → `[addon] crush config-version N - current`; a mismatch or unreachable version is logged as a `[addon][WARN]` so a stale config (or a distribution server with the version file and template out of sync) shows up in the add-on log instead of grinding on silently. Templates without a stamp still work — the check just reports `installed=none`.
 
@@ -190,15 +195,51 @@ curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
 
 Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` only resolves inside add-ons.
 
-**Why there is no field for the Supervisor API key:** the Supervisor injects it itself
-(`SUPERVISOR_TOKEN` env, re-exported as `HA_TOKEN`) because the add-on declares
-`homeassistant_api` / `hassio_api` / `hassio_role: manager` in config.yaml. Nothing to paste,
-and it re-keys on every add-on update. `401/403` denials from these APIs mean the add-on needs
-an update/reinstall — except the **expected** ones (`hassio` API paths, `supervisor.*` websocket
-commands, docker, admin-only endpoints), which every add-on gets denied. The agent-facing
-summary ships as a "Hard Limits" block in the default `CRUSH.md` the add-on writes
-(`/homeassistant/.crushdata/`), ingested by Crush on every start. Full table: the add-on's
-Documentation tab (DOCS.md, *Where the Supervisor API key comes from*).
+### Where the Supervisor API key comes from (no field for it - by design)
+
+There is **no option field** for the Supervisor API key, and you never need to paste one:
+the Supervisor itself injects a per-install token into the add-on as the environment
+variable `SUPERVISOR_TOKEN` (re-exported here as `HA_TOKEN`). It becomes valid only
+because `config.yaml` declares the API permissions:
+
+| config.yaml flag | Grants |
+|---|---|
+| `homeassistant_api: true` | calls to HA Core through the proxy (`http://supervisor/core/api/...`) |
+| `hassio_api: true` + `hassio_role: manager` | Supervisor API calls (`http://supervisor/...`) with manager-level reach |
+| `auth_api: true` | validating HA usernames/passwords via the Supervisor `/auth` endpoint |
+
+So "adding a key" is not something the Options tab can do - the key rotates with each
+install/update and the permission flags are fixed at build time. If you see
+`401 Unauthorized` / `403 Forbidden` from these APIs, the fix is to **update or reinstall
+the add-on** (so a fresh token gets issued and current permission flags land), not to
+fill in a field.
+
+Add-on releases since **1.0.20** also recover the token when s6-overlay stripped the
+container environment: startup resolves `SUPERVISOR_TOKEN` from the real environment,
+the legacy `HASSIO_TOKEN` alias, and the s6 `container_environment` dump (in that
+order), then re-exports it under both names for the `ha` CLI and crush sessions.
+
+**Denials that are normal (do not "fix" them)** - these are the attempts that are
+supposed to be denied:
+
+| What was attempted | Response | Why |
+|---|---|---|
+| `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` | 403 | blacklisted path for every add-on (blocks reaching the `hassio` integration through Core) |
+| WebSocket command types `supervisor.*` / `hassio.*` via `ws://supervisor/core/websocket` | `unauthorized` | blocked in the core proxy since Supervisor 2026.08 (#7123) - use the `ha` CLI or REST instead |
+| `/os/ssh/authorized_keys`, `/addons/<slug>/security` | 403 | need the `admin` role; this add-on deliberately runs `manager` |
+| docker CLI / docker socket | fails | no `docker_api`/`full_access` by design (better security rating); toggle **Protection mode** per-install if a task truly needs it |
+| a long-lived access token from your HA Profile page against `http://supervisor` | 401 | profile tokens are HA Core tokens - the supervisor proxy only accepts the injected `SUPERVISOR_TOKEN` |
+
+At every add-on start, `run.sh` also self-checks both endpoints (`http://supervisor/info`
+and `http://supervisor/core/api/`) and prints an OK or `DENIED <code>` line with the
+cause to the add-on log. When the token itself could not be resolved at all, the log
+shows a `SUPERVISOR_TOKEN missing` warning instead (see Troubleshooting).
+
+The agent-facing version of these rules ships as the default `CRUSH.md`
+(in `/homeassistant/.crushdata/`): a **Hard Limits** block that Crush ingests on
+every start, telling it what is already wired (never ask for keys) and which
+denials to not retry. Written on first start; pre-1.0.12 installs get it
+injected automatically on the next add-on restart (user edits preserved).
 
 ## Environment variables
 
@@ -233,6 +274,9 @@ Every option has an env equivalent. **Precedence: real environment > env file > 
    ```
 
    Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
+   Since 1.0.22 only well-formed `KEY=VALUE` lines are sourced — anything else
+   (shell commands, `curl ... | sh`, multiline values) is **skipped and logged**
+   with a `[addon][WARN]`, never executed.
 2. **The Options tab** — same names, UI form.
 3. **Real env** (`docker run -e`, supervised installs only) — highest precedence.
 
@@ -252,11 +296,26 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 ## Security
 
 - **Better security rating**: the add-on requests only Supervisor-manager + Home Assistant APIs and
-  mapped folders — **no `full_access`, no Docker API, no custom AppArmor profile** (HA applies its own hardened
-  default profile — the same one the official community add-ons run under). If a task
+  mapped folders — **no `full_access`, no Docker API, no custom AppArmor profile** (HA applies its
+  own hardened default profile — the same one the official community add-ons run under). If a task
   ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
   decision; raises the rating back to 1 while enabled).
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
+- The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
+  it serves a live shell and is **only reachable through HA ingress** — HA's own authentication is
+  the boundary in front of it, and it is never published directly. Since 1.0.33 this is enforced by
+  address, not just by a header: ttyd listens on loopback only (`127.0.0.1:7682`) and a small
+  `socat` gate on the ingress port (`7681`) relays only connections whose source is the Supervisor
+  ingress proxy (`172.30.32.2`, a fixed Home Assistant address; constants `INGRESS_ADDR` etc. in
+  `rootfs/lib.sh`). Other containers on the HA network and the LAN can no longer reach the shell,
+  which resolves the earlier "origin check only" limitation of the `X-Hass-Source` gate (1.0.27).
+  That header check (`--auth-header X-Hass-Source`) is kept as defense in depth. ttyd cannot bind to
+  the ingress address itself because that address belongs to the Supervisor container. If the gate
+  process dies the panel goes dark rather than open. This relies on the add-on running on the
+  default hassio bridge network (it does not use `host_network`). The optional touch bar rides the
+  same connection: `run.sh` splices it into a copy of ttyd's own client page (extracted from the
+  pinned binary at image build) and serves it through ttyd's `--index` option — no extra listener or
+  port exists, and with the option off the stock page is served unchanged.
 - API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
   and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
@@ -267,13 +326,26 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 - **`Unauthorized` errors in crush**: stale key — set the `ollama_api_key` option directly (it wins over everything), then restart the add-on.
 - **Model not in picker**: confirm the **Auto-discover All Models** option is on and restart the add-on (it lists every model the provider catalog exposes); for prices/ctx/vision metadata, register the model explicitly in the crushrc (central template or local file)
 - **`ha` command errors**: `HA_URL`/`HA_TOKEN` are automapped; if `ha` still fails, check the Supervisor connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
-- **Supervisor API `401`/`403` denials**: no field exists for this key — the Supervisor injects `SUPERVISOR_TOKEN` itself (granted by the `homeassistant_api`/`hassio_api`/`hassio_role` flags in config.yaml). Check the add-on log's startup self-check: `Supervisor API: OK` means the key is fine and remaining denials are the expected ones (hassio paths, `supervisor.*` websocket commands, docker, admin-only endpoints — see DOCS.md). `DENIED 401/403` → update or reinstall the add-on. Profile-page long-lived tokens never work on `http://supervisor`.
+- **Supervisor API `401` / `403` denials**: there is deliberately **no field to add a Supervisor API key** —
+  the Supervisor injects `SUPERVISOR_TOKEN` itself, and `config.yaml`'s `homeassistant_api` / `hassio_api` /
+  `hassio_role: manager` flags grant its reach (see *Where the Supervisor API key comes from* above).
+  Distinguish the two failure modes in the startup self-check lines of the add-on log:
+  - `SUPERVISOR_TOKEN missing` (present before 1.0.20; the s6 base stripped the container env before
+    startup could read it): **update the add-on** — 1.0.20+ keeps the environment intact and recovers
+    the token from the s6 dump.
+  - `token DENIED 401` / `access DENIED 403` (token present but rejected): if the self-check shows
+    `Supervisor API: OK` lines, the key is fine and any remaining denials are the *expected* ones
+    (hassio paths, `supervisor.*` websocket commands, docker, admin-only endpoints); otherwise update
+    or reinstall the add-on so a fresh token + current permission flags are issued.
+  Never paste a Profile-page long-lived token into any field — it does not work against
+  `http://supervisor`. Note: **updating the add-on re-keys it**; tokens are only valid for the current
+  install.
 - **Memory-server tool errors**: run `crush logs` / check the add-on log — an entry in `mcp_servers` with no reachable URL or no token will say so; 401 = the token on that entry is wrong.
 - **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
 
 ## Changelog
 
-Release notes for every version are in [charm-crush/CHANGELOG.md](charm-crush/CHANGELOG.md) (also shown in the add-on's Changelog tab).
+Release notes for every version are in the add-on's **Changelog** tab (`charm-crush/CHANGELOG.md` in the repo).
 
 ## A note on AI assistance
 

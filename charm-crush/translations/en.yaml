@@ -133,12 +133,12 @@ configuration:
   touch_bar_offset:
     name: Touch Bar Offset (pixels)
     description: >-
-      Nudges the touch bar's keyboard lift on phones/browsers that report the
-      keyboard height imprecisely. Negative values lower the bar (use one when
-      a dark band stays between the keys and the keyboard); positive values
-      lift it higher (when the keys hide behind the keyboard). Default -40,
-      tuned on iOS/iPadOS; Android and desktop usually want 0. Range -400 to
-      400. Applies on add-on restart.
+      Extra adjustment for the touch bar's keyboard lift. 0 (default) means
+      automatic: -40 on iOS/iPadOS, where the browser over-reports the
+      keyboard height, and 0 on Android/desktop. Any non-zero value overrides
+      the automatic choice (-400 to 400): negative lowers the bar when a band
+      stays between the keys and the keyboard, positive lifts it when the keys
+      hide behind it. Applies on add-on restart.
   touch_bar_debug:
     name: Touch Bar Debug
     description: >-

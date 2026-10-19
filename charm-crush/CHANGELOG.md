@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.44] - 2026-10-18
+
+### Changed
+- **The touch-bar offset is chosen per platform automatically.** Left at `0`,
+  the bar now trims 40px on iOS/iPadOS (where the browser over-reports the
+  keyboard height) and nothing on Android/desktop. Entering any non-zero
+  value still overrides that outright, so quirky devices can be corrected the
+  same way as before. Existing installs keep their saved value.
+- README and DOCS are now the same document again (the Documentation tab had
+  drifted: model picklists, custom model overrides, touch bar, debug option).
+
 ## [1.0.43] - 2026-10-18
 
 ### Changed

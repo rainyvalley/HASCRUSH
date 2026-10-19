@@ -54,12 +54,15 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default - **picklist** of the models this release knows |
 | `crush_large_model_custom` | *(empty)* | Free-form model id that **overrides** the daily picklist when set (e.g. a LAN Ollama tag) |
 | `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) - picklist |
+| `crush_small_model_custom` | *(empty)* | Free-form model id that **overrides** the helper picklist when set |
+| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep reasoning model - picklist; same model as the daily default, run with `crush_reasoning_effort: max` for deep work |
+| `crush_deep_model_custom` | *(empty)* | Free-form model id that **overrides** the deep picklist when set |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
-| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
+| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
-| `touch_bar_offset` | `-40` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. **-40 is the default and was tuned on iOS/iPadOS**; Android/desktop usually want `0`. Existing installs keep their saved value. Applies on add-on restart |
+| `touch_bar_offset` | `0` | Extra px for the touch bar's keyboard lift (-400..400). `0` = platform default: **-40 on iOS/iPadOS** (the browser over-reports the keyboard there) and **0 on Android/desktop**; any non-zero value overrides that outright (negative lowers the bar if a band stays under the keys, positive lifts it if keys hide). Existing installs keep their saved value; applies on add-on restart |
 | `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -293,7 +296,8 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 ## Security
 
 - **Better security rating**: the add-on requests only Supervisor-manager + Home Assistant APIs and
-  mapped folders — **no `full_access`, no Docker API** (HA shows rating ~3 instead of 1). If a task
+  mapped folders — **no `full_access`, no Docker API, no custom AppArmor profile** (HA applies its
+  own hardened default profile — the same one the official community add-ons run under). If a task
   ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
   decision; raises the rating back to 1 while enabled).
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
@@ -308,7 +312,10 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
   That header check (`--auth-header X-Hass-Source`) is kept as defense in depth. ttyd cannot bind to
   the ingress address itself because that address belongs to the Supervisor container. If the gate
   process dies the panel goes dark rather than open. This relies on the add-on running on the
-  default hassio bridge network (it does not use `host_network`).
+  default hassio bridge network (it does not use `host_network`). The optional touch bar rides the
+  same connection: `run.sh` splices it into a copy of ttyd's own client page (extracted from the
+  pinned binary at image build) and serves it through ttyd's `--index` option — no extra listener or
+  port exists, and with the option off the stock page is served unchanged.
 - API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
   and rotate keys if a backup leaves your control.
 - The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
@@ -338,7 +345,11 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 
 ## Changelog
 
-Release notes for every version are in the add-on's **Changelog** tab (`CHANGELOG.md`).
+Release notes for every version are in the add-on's **Changelog** tab (`charm-crush/CHANGELOG.md` in the repo).
+
+## A note on AI assistance
+
+Parts of this project — code, configuration, and documentation — were written with the help of generative AI. Everything in here was reviewed, tested, and corrected by a human before being committed; nothing was accepted on the model's say-so.
 
 ## License
 

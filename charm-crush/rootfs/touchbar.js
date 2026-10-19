@@ -20,12 +20,23 @@
 
   var cfg = window.__HASSBAR || {};
   var THEME = cfg.theme === 'light' ? 'light' : 'dark';
-  /* Manual trim for phones/browsers whose reported keyboard inset is off:
-   * positive raises the bar further, negative lowers it. Clamped to what the
-   * add-on option allows. */
-  var OFFSET = parseInt(cfg.offset, 10);
-  if (!isFinite(OFFSET)) OFFSET = 0;
-  OFFSET = Math.max(-400, Math.min(400, OFFSET));
+  /* Keyboard-inset trim. 0 = platform default: iOS/iPadOS over-reports the
+   * keyboard height by about 40px, Android/desktop do not. Any non-zero
+   * option value overrides the platform default outright (Android users on
+   * quirky devices set their own; iOS users who want no trim set +40). */
+  function platformOffset() {
+    try {
+      var nav = window.navigator || {};
+      var ua = String(nav.userAgent || '');
+      var iOS = /iPad|iPhone|iPod/.test(ua) ||
+        (nav.platform === 'MacIntel' && (nav.maxTouchPoints || 0) > 1); /* iPadOS 13+ */
+      return iOS ? -40 : 0;
+    } catch (e) { return 0; }
+  }
+  var USER_OFFSET = parseInt(cfg.offset, 10);
+  if (!isFinite(USER_OFFSET)) USER_OFFSET = 0;
+  USER_OFFSET = Math.max(-400, Math.min(400, USER_OFFSET));
+  var OFFSET = USER_OFFSET !== 0 ? USER_OFFSET : platformOffset();
   /* Diagnostic overlay (touch_bar_debug): prints the raw viewport numbers
    * above the bar so a phone/browser that misreports its keyboard inset can
    * be diagnosed from a screenshot instead of guesswork. */
