@@ -20,7 +20,7 @@ export S6_KEEP_ENV=1
 # definition precedes its first use (they were defined later in the file
 # before the extraction - strictly earlier is behaviorally identical).
 # Missing lib.sh is fatal: the mcp/model/validator logic would be undefined.
-__libdir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" && pwd -P)
+__libdir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE:-$0}")" && pwd -P)
 # shellcheck source=charm-crush/rootfs/lib.sh
 . "$__libdir/lib.sh"
 unset __libdir
@@ -86,7 +86,7 @@ else
   _core_pid=$!
   SUP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/info || true)
   case "$SUP_CODE" in
-    200) echo "[addon] Supervisor API: OK (token accepted, manager role)" ;;
+    200) echo "[addon] Supervisor API: OK (token accepted, default role)" ;;
     401) echo "[addon][WARN] Supervisor API: token DENIED 401 (invalid/re-keyed) - update or reinstall the add-on" ;;
     403) echo "[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on" ;;
     *)   echo "[addon][WARN] Supervisor API: unreachable (HTTP ${SUP_CODE:-none}) - Supervisor restarting or DNS issue" ;;
@@ -251,15 +251,19 @@ if [ -n "$CONFIG_URL" ] \
    && curl -fsSL --retry 2 --retry-delay 2 --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
    && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ] \
    && grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new \
-   && bash -n /tmp/crushrc.new 2>/dev/null; then
-  mv -f /tmp/crushrc.new "$crushrc"   # same-dir move = atomic
+   && bash -n /tmp/crushrc.new 2>/dev/null \
+   && cp /tmp/crushrc.new "$crushrc.new"; then
+  # /tmp -> persist dir is a cross-filesystem move (copy + unlink, NOT
+  # atomic); stage a copy in the destination dir so the final rename(2) is.
+  mv -f "$crushrc.new" "$crushrc"
+  rm -f /tmp/crushrc.new
   CRUSHRC_FETCHED=1
   echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
 else
   # Fail closed: a fetch that failed ANY gate (HTTP/size/content/bash-syntax —
   # `bash -n` catches truncated or garbled bytes before they can ever run) is
   # never applied, and the partial file is never left behind in /tmp.
-  rm -f /tmp/crushrc.new
+  rm -f /tmp/crushrc.new "$crushrc.new"
   if [ -n "$CONFIG_URL" ]; then
     echo "[addon][WARN] central crushrc fetch failed validation (HTTP/size/content/bash-syntax) - fetched template NOT applied" >&2
   fi

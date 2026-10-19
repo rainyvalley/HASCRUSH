@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.48] - 2026-10-19
+
+### Fixed
+- **AppArmor signal/ptrace peer rules match the real profile name.** The
+  Supervisor renames the profile to the add-on slug (repository-hash prefix,
+  e.g. `a1b2c3d4_charm-crush`), so `peer=charm-crush*` never matched; now
+  `peer=*charm-crush`.
+- **Central crushrc install is truly atomic:** staged in the destination
+  directory before the rename (the old `/tmp` move was a cross-filesystem
+  copy).
+- Supervisor self-check log said "manager role"; the add-on uses the default
+  role, so it now says so.
+- shellcheck SC1007 in the lib.sh sourcing line.
+
 ## [1.0.47] - 2026-10-19
 
 ### Fixed
