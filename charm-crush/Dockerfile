@@ -78,9 +78,9 @@ RUN set -eux; \
     ttyd --interface 127.0.0.1 --port 17682 --max-clients 1 sh -c 'while :; do sleep 3600; done' >/dev/null 2>&1 & \
     TTYD_PID=$!; \
     PAGE_OK=0; \
-    for _ in $(seq 1 30); do \
-      if curl -fsS "http://127.0.0.1:17682/" -o /usr/local/share/ttyd-index.html; then PAGE_OK=1; break; fi; \
-      sleep 1; \
+    for _ in $(seq 1 150); do \
+      if curl -fsS "http://127.0.0.1:17682/" -o /usr/local/share/ttyd-index.html 2>/dev/null; then PAGE_OK=1; break; fi; \
+      sleep 0.2; \
     done; \
     kill "$TTYD_PID" 2>/dev/null || true; \
     wait "$TTYD_PID" 2>/dev/null || true; \

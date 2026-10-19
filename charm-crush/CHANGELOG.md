@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The built-in crushrc keeps `=` characters** when reading a key from
   `ollama.env` (new installs).
 
+### Changed
+- **Faster start when the Supervisor is slow.** The two startup API
+  self-check probes now run side by side instead of one after the other
+  (worst case 5 s instead of 10 s); the log output is unchanged.
+- Image build polls for ttyd's client page every 0.2 s instead of every
+  second, shaving up to a second off the build.
+
 ## [1.0.46] - 2026-10-18
 
 ### Changed
