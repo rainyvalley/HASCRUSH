@@ -179,9 +179,6 @@ Safe alternatives: `ha` CLI for Core-only commands (pre-authed: `ha core logs`,
 `ha core stats`), REST with `$HA_TOKEN` (`${HA_URL}/api/states/...`,
 `${HA_URL}/api/services/...`), and plain files under the mapped paths.
 <!-- hasscrush-limits-end -->'
-# inject_limits moved to rootfs/lib.sh (sourced at the top) so the bats suite
-# (tests/) can unit-test the marker/heading logic; LIMITS_START/END/BODY stay
-# here - the body is the product copy of the injected guardrails.
 if [ ! -f "$CRUSH_MD" ]; then
 cat > "$CRUSH_MD" <<EOF
 # Crush - Home Assistant Add-on
@@ -224,9 +221,7 @@ else
 fi
 
 # ── charset validators (safe_url / safe_text / val_check) ────────────────
-# Moved to rootfs/lib.sh (sourced at the top) so the bats suite (tests/) can
-# unit-test the charsets against values the boot writes into the crushrc;
-# warn_plain_http stays here - it is boot-log policy, not value validation.
+# The validators live in rootfs/lib.sh; warn_plain_http is boot-log policy.
 # plain-http note (user decision: http stays allowed); $1 = exact warn body,
 # $2 = the URL. http carries secrets/writable scripts unencrypted on the wire.
 warn_plain_http() { case "$2" in http://*) echo "[addon][WARN] $1; prefer https" >&2 ;; esac; }
@@ -447,10 +442,6 @@ fi
 # Every token is carried by its OWN mcp_servers entry ("token": or
 # "token_url":); resolved values are exported as MCP_TOKEN_<name> env vars
 # and the crushrc references them, so secrets never land in stored files.
-# No per-service option fields exist anymore; the old MEM0_MCP_TOKEN env is
-# no longer read.
-# The crushrc-surgery helpers (mcp_remove / mcp_sanitize) moved to
-# rootfs/lib.sh (sourced at the top, unit-tested in tests/).
 
 # Resolve one mcp_servers entry's token: $1 = server name, $2 = inline "token"
 # value, $3 = "token_url" to fetch. Result in MCP_TOK ("" = none resolved).
@@ -655,8 +646,6 @@ fi
 # CRUSH_LARGE_MODEL / CRUSH_SMALL_MODEL / CRUSH_DEEP_MODEL / CRUSH_REASONING_EFFORT envs or the
 # matching add-on options rewire the slots to whatever the operator picked; unknown/skipped values
 # leave the config's own slots in place.
-# apply_model_slot moved to rootfs/lib.sh (sourced at the top, unit-tested in
-# tests/); $crushrc below is its global state.
 # One jq spawn for all seven slot fields (NUL-delimited so values - even
 # ones with newlines/quotes - stay intact and land in the right slot; env-wins
 # precedence preserved by the ${VAR:-} wrappers). Each slot is a picklist of

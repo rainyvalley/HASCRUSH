@@ -27,7 +27,7 @@ configuration:
       Picklist of the models this add-on release knows (registration ids in
       provider/model form). For anything else - LAN Ollama tags or other
       catalog ids - use Custom Daily Model below, which wins when set. The
-      in-terminal picker (Ctrl+L, or the Model key on the touch bar) always
+      in-terminal picker (Ctrl+L) always
       lists every discovered model; restart the add-on to refresh discovery.
   crush_large_model_custom:
     name: Custom Daily Model (overrides)

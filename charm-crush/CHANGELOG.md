@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-10-19
+
+### Changed
+- Housekeeping only, no behaviour change: the Model Options-tab text no
+  longer mentions the touch bar's removed `Model` key, and stale source
+  comments were dropped.
+
 ## [1.0.46] - 2026-10-18
 
 ### Changed
