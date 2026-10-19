@@ -78,6 +78,12 @@ export SHELL="${SHELL:-/bin/bash}"
 if [ -z "$HA_TOKEN" ]; then
   echo "[addon][WARN] SUPERVISOR_TOKEN missing after env + legacy HASSIO_TOKEN + s6 envdir recovery - HA/supervisor API calls will 401 (update or reinstall the add-on so the Supervisor issues its key)"
 else
+  # The two probes are independent: run them concurrently (worst case 5 s
+  # instead of 10 s when the Supervisor is slow/unreachable); the log lines
+  # still print in the same order.
+  _core_out=/tmp/.core_code.$$
+  curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/core/api/ > "$_core_out" 2>/dev/null &
+  _core_pid=$!
   SUP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/info || true)
   case "$SUP_CODE" in
     200) echo "[addon] Supervisor API: OK (token accepted, manager role)" ;;
@@ -85,7 +91,9 @@ else
     403) echo "[addon][WARN] Supervisor API: access DENIED 403 (role/permission) - hassio_api/hassio_role not granted; update the add-on" ;;
     *)   echo "[addon][WARN] Supervisor API: unreachable (HTTP ${SUP_CODE:-none}) - Supervisor restarting or DNS issue" ;;
   esac
-  CORE_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $HA_TOKEN" http://supervisor/core/api/ || true)
+  wait "$_core_pid" 2>/dev/null || true
+  CORE_CODE=$(cat "$_core_out" 2>/dev/null || true)
+  rm -f "$_core_out"
   case "$CORE_CODE" in
     200) echo "[addon] HA Core API: OK (homeassistant_api granted)" ;;
     401) echo "[addon][WARN] HA Core API: token DENIED 401 - homeassistant_api not active; update the add-on" ;;
