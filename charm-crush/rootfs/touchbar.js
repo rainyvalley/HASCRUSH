@@ -236,7 +236,12 @@
     var css = [
       '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;',
       'display:flex;align-items:center;justify-content:center;gap:6px;',
-      'padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));',
+      /* No safe-area reservation: the bar is transparent, so a device inset
+       * (env(safe-area-inset-bottom)) showed up as a dark strip between the
+       * keys and the keyboard instead of protecting anything. 6px padding
+       * only; BAR_H matches this box exactly so the terminal ends at the
+       * keys. */
+      'padding:6px 10px 6px;',
       'background:transparent;border:0;box-shadow:none;pointer-events:none;',
       'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
       '-webkit-tap-highlight-color:transparent;}',

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.42] - 2026-10-18
+
+### Fixed
+- **No more dark strip under the keys.** The bar reserved the browser's
+  safe-area inset below the key row; on phones where that inset is large it
+  showed as a black band between the keys and the on-screen keyboard. The
+  keys now sit directly on the keyboard, and `Touch Bar Offset` can go back
+  to 0.
+
 ## [1.0.41] - 2026-10-18
 
 ### Added
