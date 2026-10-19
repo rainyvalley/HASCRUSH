@@ -777,9 +777,10 @@ if [ "$AUTO_UPDATE" = "true" ]; then
 fi
 
 # ── Web terminal ────────────────────────────────────────────────────────
-# One jq spawn for the four terminal-web options (NUL-delimited, same pattern
-# as the model-slot read above).
-mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant")] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+# One jq spawn for the five terminal-web options (NUL-delimited, same pattern
+# as the model-slot read above). touch_bar uses the if-form, not // : jq's //
+# treats an explicit false as unset, and an opt-in toggle must stay falseable.
+mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
 FONT_SIZE="${_topts[0]}"
 # FONT_SIZE is spliced into an UNQUOTED -t token, so force it to digits: the
 # jq default only covers a missing key, not a string the operator (or anything
@@ -789,6 +790,7 @@ case "$FONT_SIZE" in
 esac
 THEME="${_topts[1]}"
 SESSION_PERSIST="${_topts[2]}"
+TOUCHBAR="${_topts[4]}"
 if [ "$THEME" = "dark" ]; then
   COLORS='background=#1e1e2e,foreground=#cdd6f4,cursor=#f5e0dc'
 else
@@ -818,6 +820,26 @@ else
   cd /homeassistant
 fi
 
+# ── Touch bar (on-screen key bar at the panel bottom; touch_bar option) ──
+# Served by handing ttyd a custom index page (ttyd's --index option): the
+# build-time-extracted embedded client page with the touch-bar script spliced
+# in (touchbar_inject, lib.sh). Every step degrades to the plain terminal -
+# the bar is a nicety and must never block the boot or change the transport
+# (gate/header unchanged; ttyd still binds 7682 for the healthcheck).
+_tb_index=
+if [ "$TOUCHBAR" = "true" ]; then
+  if [ -r /usr/local/share/ttyd-index.html ] && [ -r /usr/local/share/touchbar.js ]; then
+    if touchbar_inject /usr/local/share/ttyd-index.html /usr/local/share/touchbar.js "$THEME" /tmp/ttyd-touchbar.html; then
+      _tb_index=/tmp/ttyd-touchbar.html
+      echo "[addon] touch bar on: sticky Ctrl/Alt/Tab, momentary Esc/Del/Paste"
+    else
+      echo "[addon][WARN] touch bar page injection failed - starting the plain terminal"
+    fi
+  else
+    echo "[addon][WARN] touch bar assets missing from image - starting the plain terminal"
+  fi
+fi
+
 # Only the Supervisor's ingress proxy may reach the root shell. Two layers:
 #  1. ttyd listens on loopback only (TTYD_BACKEND_*, lib.sh); a socat gate on
 #     the ingress port relays ONLY connections whose source is the Supervisor
@@ -829,7 +851,11 @@ fi
 # If the gate dies the panel goes dark (fail closed), never open.
 mapfile -t _gate < <(ingress_gate_args)
 socat "${_gate[@]}" &
-mapfile -t _ttyd < <(ttyd_args "$FONT_SIZE" "$COLORS")
+if [ -n "$_tb_index" ]; then
+  mapfile -t _ttyd < <(ttyd_args "$FONT_SIZE" "$COLORS" --index "$_tb_index")
+else
+  mapfile -t _ttyd < <(ttyd_args "$FONT_SIZE" "$COLORS")
+fi
 # SHELL_CMD is deliberately word-split (command + args).
 # shellcheck disable=SC2086
 exec ttyd "${_ttyd[@]}" $SHELL_CMD

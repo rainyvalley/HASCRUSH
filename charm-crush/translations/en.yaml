@@ -102,6 +102,14 @@ configuration:
     name: Terminal Theme
     description: >-
       Color theme for the web terminal. Dark or light.
+  touch_bar:
+    name: Touch Bar
+    description: >-
+      Small key bar at the bottom of the web terminal, for touch screens:
+      Ctrl, Alt and Tab latch like held keys (the next key pressed composes
+      them, then they release), while Esc, Delete and Paste fire immediately.
+      Paste reads the browser clipboard; on a plain-HTTP connection it falls
+      back to a paste-into-box dialog. Applies on add-on restart.
   working_directory:
     name: Working Directory
     description: >-

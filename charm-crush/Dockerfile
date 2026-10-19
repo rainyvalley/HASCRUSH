@@ -65,6 +65,32 @@ RUN case "${BUILD_ARCH}" in \
     echo "${TTYD_SHA256}  /usr/bin/ttyd" | sha256sum -c - && \
     chmod +x /usr/bin/ttyd
 
+# Extract ttyd's OWN embedded web client page (a self-contained index.html
+# with all client JS inlined - ttyd serves no separate assets) to
+# /usr/local/share/ttyd-index.html. When the touch_bar option is on, run.sh
+# splices the touch-bar script into this copy and hands it back to ttyd via
+# its --index option; the page therefore always comes from the SAME pinned
+# binary that serves it and cannot drift with a ttyd bump. Extraction runs the
+# just-verified binary briefly on a throwaway loopback port; it is
+# best-effort: a failure keeps the image bootable, run.sh logs that the touch
+# bar is unavailable and serves the plain terminal.
+RUN set -eux; \
+    ttyd --interface 127.0.0.1 --port 17682 --max-clients 1 sh -c 'while :; do sleep 3600; done' >/dev/null 2>&1 & \
+    TTYD_PID=$!; \
+    PAGE_OK=0; \
+    for _ in $(seq 1 30); do \
+      if curl -fsS "http://127.0.0.1:17682/" -o /usr/local/share/ttyd-index.html; then PAGE_OK=1; break; fi; \
+      sleep 1; \
+    done; \
+    kill "$TTYD_PID" 2>/dev/null || true; \
+    wait "$TTYD_PID" 2>/dev/null || true; \
+    if [ "$PAGE_OK" = "1" ] && grep -q '</head>' /usr/local/share/ttyd-index.html; then \
+      echo "ttyd client page extracted for the touch bar"; \
+    else \
+      rm -f /usr/local/share/ttyd-index.html; \
+      echo "WARNING: ttyd client page extraction failed - the touch bar will be unavailable"; \
+    fi
+
 # Install Crush. Pinned to a fixed release (supply-chain, 2026-10-06): the
 # version no longer auto-resolves to "latest" — updates are explicit ARG
 # bump commits (the auto_update_crush add-on option remains the runtime path
@@ -123,8 +149,10 @@ RUN case "${BUILD_ARCH}" in \
 COPY rootfs/root/.bashrc rootfs/root/.tmux.conf /root/
 # run.sh sources lib.sh (pure helpers, see its header) relative to its own
 # location, so both land in /usr/local/bin; lib.sh stays 644 - it is sourced,
-# never executed.
+# never executed. touchbar.js is read (never executed) by run.sh when it
+# splices the touch-bar page for ttyd --index.
 COPY rootfs/run.sh rootfs/lib.sh /usr/local/bin/
+COPY rootfs/touchbar.js /usr/local/share/touchbar.js
 
 # Bash login shells source .profile too; run.sh ships 644 from git, so its
 # exec bit is set here instead of in a dedicated RUN layer

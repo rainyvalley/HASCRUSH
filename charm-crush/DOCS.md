@@ -21,6 +21,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 - **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
 - **Your models, any of them** — defaults: **DeepSeek V4.1 Flash** for the daily, helper and deep tiers (thinking; daily effort high, deep effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just DeepSeek); refresh = add-on restart
 - **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
+- **Touch bar (optional)** — on-screen key bar at the bottom of the web terminal: `Ctrl`, `Alt`, `Tab` latch like held keys, `Esc`/`Del`/`Paste` are one-shot; made for phones/tablets and toggleable in the Options tab
 - **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
 - **Memory (optional)** — point at any MCP memory server (e.g. a mem0-style shared layer your other chat clients also use); empty = off
 - **`ha` CLI preinstalled and pre-authenticated** — Supervisor token env-only, never written to disk
@@ -57,6 +58,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
+| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once. Made for phones/tablets; also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
 | `auto_update_crush` | `false` | Update crush on add-on start (with rollback). Off by default since 1.0.33 for new installs: enabling it downloads the latest upstream crush and runs it as root at every start, verified only against a checksum published in the same release. Installs that already saved this option keep their value |

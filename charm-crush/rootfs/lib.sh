@@ -375,3 +375,46 @@ ttyd_args() {
     -t "theme=${_ta_colors}" \
     "$@"
 }
+
+# ── touch bar (web-terminal key bar, touch_bar option) ─────────────────────
+# The add-on can serve ttyd a CUSTOM index page (ttyd 1.7+ --index): the page
+# generated here is ttyd's own embedded client page with the touch-bar script
+# spliced in before </body>. The bar (rootfs/touchbar.js, copied to
+# /usr/local/share/) adds Ctrl/Alt/Tab (latching) and Esc/Del/Paste (one-shot)
+# for touch screens, composing latches at the WebSocket send layer.
+#
+# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML
+#   SRC = ttyd's embedded client page (extracted at BUILD time by the
+#         Dockerfile from the pinned binary), BAR_JS = touchbar.js,
+#   THEME = dark|light (mismatching values fall back to dark),
+#   OUT = generated page.
+# Pure file -> file: no network, no /data. Fails (rc 1) if inputs are missing
+# or unreadable, if SRC already carries this add-on's prelude (never inject
+# twice), or if the spliced output lacks the prelude marker (then OUT is
+# removed). The splice point search is inside the WHOLE page string, not
+# line-by-line, so a minified single-line page still splices correctly; when
+# </body> is absent, </html> is tried, then the prelude is appended.
+touchbar_inject() {
+  _ti_src=$1 _ti_bar=$2 _ti_theme=$3 _ti_out=$4
+  [ -n "$_ti_src" ] && [ -r "$_ti_src" ] || return 1
+  [ -n "$_ti_bar" ] && [ -r "$_ti_bar" ] || return 1
+  [ -n "$_ti_out" ] || return 1
+  case "$_ti_theme" in dark|light) ;; *) _ti_theme=dark ;; esac
+  grep -q '__HASSBAR' "$_ti_src" 2>/dev/null && return 1
+  awk -v theme="$_ti_theme" '
+    NR==FNR { if (NR > 1) bar = bar "\n"; bar = bar $0; next }
+    { page = page $0 "\n" }
+    END {
+      pre = "<script>window.__HASSBAR={\"theme\":\"" theme "\"};</script>" \
+            "<script>" bar "</script>"
+      i = index(page, "</body>")
+      if (i == 0) i = index(page, "</html>")
+      if (i > 0) {
+        printf "%s", substr(page, 1, i - 1) pre substr(page, i)
+      } else {
+        printf "%s", page pre
+      }
+    }
+  ' "$_ti_bar" "$_ti_src" > "$_ti_out"
+  grep -q 'window\.__HASSBAR={"theme"' "$_ti_out" 2>/dev/null || { rm -f "$_ti_out"; return 1; }
+}

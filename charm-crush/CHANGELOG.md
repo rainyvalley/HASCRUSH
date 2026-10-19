@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-10-18
+
+### Added
+- **Touch bar for the web terminal**, on by default and toggleable in the
+  Options tab (`Touch Bar`). A small bar at the bottom of the terminal page,
+  made for phones/tablets: `Ctrl`, `Alt` and `Tab` latch like held keys (the
+  next key tapped or typed is composed with them and they then release; tap
+  the same key again to release early), while `Esc`, `Del` and `Paste` fire
+  immediately. Paste reads the browser clipboard; on a plain-HTTP connection
+  it falls back to a paste-into-box dialog. The bar is served by ttyd itself
+  (its custom-index feature) over the same connection and ports as before -
+  no change to the transport or the ingress gate - and any missing piece
+  degrades to the plain terminal with a log line.
+
 ## [1.0.34] - 2026-10-13
 
 ### Changed

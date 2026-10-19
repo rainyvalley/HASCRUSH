@@ -234,6 +234,7 @@ jobs:
             '{"provider":"third_party",' \
             ' "third_party_base_url":"http://test.invalid:9000/v1",' \
             ' "third_party_api_key":"smoke-key-not-real",' \
+            ' "touch_bar":true,' \
             ' "mcp_servers":[{"name":"mem0","url":"http://test.invalid:8300/mcp","token":"smoke-token-not-real"},' \
             ' {"name":"home-assistant","url":"http://test.invalid:8123/mcp","token":"smoke-ha-token-not-real"},' \
             ' {"name":"relay","command":"socat","args":["STDIO","TCP:192.0.2.5:3010"],"timeout":20}]}' \
@@ -281,6 +282,15 @@ jobs:
             if grep -qF 'smoke-token-not-real' "$work/boot.log"; then fail 'token leaked into the boot log'; fi
             if echo "$crushrc" | grep -qF 'smoke-ha-token-not-real'; then fail 'home-assistant token inlined in crushrc'; fi
             if grep -qF 'smoke-ha-token-not-real' "$work/boot.log"; then fail 'home-assistant token leaked into the boot log'; fi
+            # 4) touch bar: the custom index page was built from the
+            #    build-time-extracted ttyd client page (extraction failures
+            #    degrade to a WARN line + plain terminal instead of failing)
+            if grep -qE 'touch bar (assets missing|page injection failed)' "$work/boot.log"; then fail 'touch bar assets missing / extraction failed'; fi
+            if grep -q 'touch bar on' "$work/boot.log"; then
+              tb=$(docker exec boot-smoke cat /tmp/ttyd-touchbar.html)
+              if ! echo "$tb" | grep -q 'window.__HASSBAR={"theme"'; then fail 'touch bar prelude not in the generated index'; fi
+              if ! docker exec boot-smoke pgrep -f 'ttyd.*--index /tmp/ttyd-touchbar.html' >/dev/null; then fail 'ttyd is not running with the touch bar index'; fi
+            fi
           fi
           docker rm -f boot-smoke >/dev/null 2>&1 || true
           exit $rc

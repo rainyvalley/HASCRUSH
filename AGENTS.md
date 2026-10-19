@@ -13,6 +13,7 @@ charm-crush/
   Dockerfile       # alpine-based image: ttyd + crush + ha CLI, each pinned and sha256-verified
   rootfs/run.sh    # startup logic (fetch config, keys, supervisor-token recovery, persistence, tmux+ttyd)
   rootfs/lib.sh    # pure helpers sourced by run.sh and by the bats suite (see below)
+  rootfs/touchbar.js # client-side touch bar, spliced into a ttyd --index page (touch_bar option)
   rootfs/root/     # .bashrc / .tmux.conf copied into the image
   translations/en.yaml  # Options-tab labels - CI asserts EVERY option has an entry
   DOCS.md          # Documentation-tab content (mirrors README.md; keep the two in sync)

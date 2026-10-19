@@ -38,6 +38,14 @@ CFG="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." && pwd)/charm-crush/config.yam
   [[ " ${a[*]} " == *" theme=background=#fff "* ]]
 }
 
+@test "touch bar rides ttyd's custom index option: --index precedes the shell command" {
+  mapfile -t a < <(ttyd_args 14 'background=#000' --index /tmp/ttyd-touchbar.html tmux new-session -A -s crush)
+  s=" ${a[*]} "
+  [[ "$s" == *' --index /tmp/ttyd-touchbar.html '* ]]
+  [[ "$s" != *' 7681 '* ]]
+  [ "${a[${#a[@]}-1]}" = crush ]
+}
+
 @test "run.sh launches via the helpers: gate backgrounded, ttyd exec'd, no direct --port" {
   grep -q 'ingress_gate_args' "$RUN"
   grep -qE '^socat "\$\{_gate\[@\]\}" &' "$RUN"

@@ -20,3 +20,10 @@ ignored:
   # fail-closed via [ -n "$EXPECTED" ], or cosmetic tee/echo). Adding a
   # `SHELL ["/bin/ash", "-o", "pipefail", "-c"]` directive breaks on busybox.
   - DL4006
+  # The build-time ttyd page extraction (the touch-bar feature) backgrounds
+  # the just-pinned ttyd on a throwaway loopback port and kills it again -
+  # a process started and owned by that same RUN, not the container's
+  # runtime service. DL3001 is a broad "these commands rarely make sense in
+  # a container" notice; here the kill is exactly the point: nothing may be
+  # listening on the throwaway port when the image is done building.
+  - DL3001
