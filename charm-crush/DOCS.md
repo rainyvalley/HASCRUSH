@@ -295,11 +295,15 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
 
 ## Security
 
-- **Better security rating**: the add-on requests only Supervisor-manager + Home Assistant APIs and
-  mapped folders — **no `full_access`, no Docker API, no custom AppArmor profile** (HA applies its
-  own hardened default profile — the same one the official community add-ons run under). If a task
-  ever needs host/docker access, toggle **Protection mode** for this add-on in Settings (per-install
-  decision; raises the rating back to 1 while enabled).
+- **Store rating 8/8.** The Supervisor scores an add-on from 5 up: ingress adds 2, a custom AppArmor
+  profile adds 1, and `hassio_role: manager`/`admin`, `host_network`, `host_pid`, privileged
+  capabilities, docker access and `full_access` take points away. This add-on claims ingress only,
+  ships `apparmor.txt` (a profile that confines the kernel surface while letting the workload inside
+  the container do its job) and leaves the Supervisor role at the **default**: `/core` +
+  `/homeassistant` through `homeassistant_api`, nothing that manages add-ons, backups, the host or the
+  OS. **No `full_access`, no Docker API, no host networking, no privileged caps.** Toggling
+  **Protection mode** per-install remains the (rating-breaking) escape hatch if a task truly needs
+  docker/host reach.
 - The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
 - The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
   it serves a live shell and is **only reachable through HA ingress** — HA's own authentication is
@@ -335,7 +339,7 @@ A fetched central crushrc resolves its secrets from these envs — never inline 
     the token from the s6 dump.
   - `token DENIED 401` / `access DENIED 403` (token present but rejected): if the self-check shows
     `Supervisor API: OK` lines, the key is fine and any remaining denials are the *expected* ones
-    (hassio paths, `supervisor.*` websocket commands, docker, admin-only endpoints); otherwise update
+    (hassio paths, `supervisor.*` websocket commands, add-on/backup/host management, docker, admin-only endpoints); otherwise update
     or reinstall the add-on so a fresh token + current permission flags are issued.
   Never paste a Profile-page long-lived token into any field — it does not work against
   `http://supervisor`. Note: **updating the add-on re-keys it**; tokens are only valid for the current

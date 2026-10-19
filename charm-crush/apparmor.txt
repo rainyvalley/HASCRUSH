@@ -1,0 +1,41 @@
+#include <tunables/global>
+
+# Custom AppArmor profile for the HASSCrush add-on (Supervisor rewrites the
+# profile name to the add-on slug on install). The container itself is the
+# main boundary: a private mount namespace, the Supervisor-provided cap set
+# and no docker socket. This profile adds kernel-surface confinement on top -
+# the same spirit as Docker's default profile - while staying permissive
+# enough for the workload inside (s6-overlay, ttyd, tmux, bash, crush, node,
+# git, ssh, ripgrep): any of those may write wherever the container's mounts
+# allow.
+profile charm-crush flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Everything inside the container's own mount namespace: the mapped HA
+  # folders are the writable surface, the image the read-only one.
+  file,
+  network,
+
+  # Capabilities: the runtime grants the Docker default set; deny the
+  # escalation primitives an add-on must never use.
+  capability,
+  deny capability sys_admin,
+  deny capability sys_module,
+  deny capability sys_ptrace,
+  deny capability sys_rawio,
+
+  # Signals and ptrace only within this profile: everything the add-on
+  # starts (s6, ttyd, tmux, shells, crush, node) shares it, nothing outside
+  # it can be reached.
+  signal (receive) peer=charm-crush*,
+  signal (send) peer=charm-crush*,
+  ptrace (trace,read) peer=charm-crush*,
+
+  # Kernel-facing filesystems and interfaces are not part of the workload.
+  deny /sys/** wklx,
+  deny /sys/kernel/security/** rwklx,
+  deny /proc/sys/** w,
+  deny /proc/kcore r,
+  deny /proc/*/mem rw,
+  deny @{PROC}/modules r,
+}

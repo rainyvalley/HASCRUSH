@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — all your Ollama (or third-party) models at your fingertips, with optional MCP support for third-party tie-ins
-version: "1.0.44"
+version: "1.0.45"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:
@@ -17,8 +17,9 @@ panel_title: HASSCrush
 homeassistant_api: true
 auth_api: true
 hassio_api: true
-hassio_role: manager
-# full_access/docker_api intentionally ABSENT (default false) - better HA security rating.
+# full_access/docker_api intentionally ABSENT (default false); hassio_role is left at
+# the default too (homeassistant_api grants exactly /core and /homeassistant) -
+# together with apparmor.txt this is what lifts the store security rating.
 # If a crush task needs host/docker access, toggle "Protection mode" per-install in the UI.
 map:
   - homeassistant_config:rw

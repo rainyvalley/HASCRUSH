@@ -94,6 +94,7 @@ Key precedence everywhere: **real environment > env file (/homeassistant/.crushd
 
 ## Gotchas
 
+- **Security rating is a Supervisor formula, not a guess** (`supervisor/apps/utils.py::rating_security`, scale 1-8, base 5): ingress +2, custom AppArmor profile +1, `hassio_role` manager -1 / admin -2, `host_network` -1, `host_pid` -2, privileged caps -1, docker/full access = 1. HASSCrush sits at 8 by claiming ingress, shipping `apparmor.txt` and leaving `hassio_role` at the default (only `/supervisor/info` + the Core API are used at runtime; add-on/backup/host management is denied by design and the CRUSH.md limits say so).
 - **`init: false` in config.yaml is load-bearing.** s6-overlay must be pid 1; `init: true` re-parents it and the container dies with "can only run as pid 1".
 - **No `full_access`/`docker_api` on purpose** — keeps HA's security rating at the hardened default. The CRUSH.md "Hard Limits" block tells the crush agent which denials are by design (hassio paths, `supervisor.*` websockets, docker) so it stops retrying them.
 - **Never put a literal API key or private IP in any file.** CI's secret-scan step greps every tracked text file for known API-key prefixes and RFC 1918 addresses (10/8, 172.16/12, 192.168/16) and fails the build; the exact patterns live in `.github/workflows/ci.yml`. The default configs are deliberately free of real hosts/keys; secrets come from env/URLs. Test fixtures use RFC 5737 doc-range addresses (192.0.2.0/24) instead.

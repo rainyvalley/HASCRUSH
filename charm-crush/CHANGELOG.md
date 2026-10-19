@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.45] - 2026-10-18
+
+### Security
+- **Store security rating raised to 8/8.** Two changes: the add-on no longer
+  asks for the Supervisor `manager` role (default role only, so it can call
+  the Core API and `/supervisor/info` but cannot manage add-ons, backups, the
+  host or the OS), and it now ships its own AppArmor profile (`apparmor.txt`)
+  that confines kernel-facing surfaces while leaving the terminal workload
+  inside the container free. `full_access`/Docker access/host networking stay
+  off as before.
+- **The agent's guardrails were updated to match**: the "Hard Limits" block it
+  reads at startup now lists Supervisor-side management as denied by design and
+  points at Core-only `ha` commands as the alternative.
+
 ## [1.0.44] - 2026-10-18
 
 ### Changed

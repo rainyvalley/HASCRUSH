@@ -171,12 +171,12 @@ NEVER attempt or retry these - they are denied BY DESIGN; one try at most,
 then report to the user instead:
 - `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` -> 403 (blacklisted for every add-on)
 - websocket `supervisor.*`/`hassio.*` commands -> `unauthorized` (blocked since Supervisor 2026.08) - use the `ha` CLI or REST
-- `/os/ssh/authorized_keys`, `/addons/<slug>/security` -> admin-only; this add-on is manager
+- Supervisor-side management (`/addons/...`, `/backups`, `/os/...`, `/host/...`, `/store`) -> denied: this add-on runs the DEFAULT Supervisor role by design (no manager/admin)
 - docker CLI -> no docker socket; the USER may toggle Protection mode if ever needed
 - Profile-page long-lived tokens do NOT work on `http://supervisor`
 
-Safe alternatives: `ha` CLI (pre-authed: `ha core logs`, `ha core stats`,
-`ha host info`, `ha addons`), REST with `$HA_TOKEN` (`${HA_URL}/api/states/...`,
+Safe alternatives: `ha` CLI for Core-only commands (pre-authed: `ha core logs`,
+`ha core stats`), REST with `$HA_TOKEN` (`${HA_URL}/api/states/...`,
 `${HA_URL}/api/services/...`), and plain files under the mapped paths.
 <!-- hasscrush-limits-end -->'
 # inject_limits moved to rootfs/lib.sh (sourced at the top) so the bats suite
