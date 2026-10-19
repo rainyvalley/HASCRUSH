@@ -246,7 +246,10 @@ jobs:
             -v "$work/data:/data" charm-crush:${{ matrix.arch }}
           rc=0
           for _ in $(seq 1 240); do
-            if docker logs boot-smoke 2>&1 | grep -q 'mcp_servers: 3 server(s) applied'; then break; fi
+            # both markers: the model-slot rewrite is logged AFTER the mcp
+            # marker, and under QEMU (aarch64) reading between the two raced
+            if docker logs boot-smoke 2>&1 | grep -q 'mcp_servers: 3 server(s) applied' \
+               && docker logs boot-smoke 2>&1 | grep -q 'model defaults applied'; then break; fi
             if [ "$(docker inspect -f '{{.State.Running}}' boot-smoke 2>/dev/null)" != true ]; then
               echo '::error::container exited before the boot marker appeared'; docker logs boot-smoke 2>&1; rc=1; break
             fi
