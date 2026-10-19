@@ -371,6 +371,7 @@ ttyd_args() {
     --auth-header X-Hass-Source \
     -t "fontSize=${_ta_font}" \
     -t fontFamily=Monaco,Consolas,monospace \
+    -t macOptionClickForcesSelection=true \
     -t scrollback=20000 \
     -t "theme=${_ta_colors}" \
     "$@"
@@ -389,7 +390,9 @@ ttyd_args() {
 #   THEME = dark|light (mismatching values fall back to dark),
 #   OUT = generated page,
 #   OFFSET = optional integer px added to the keyboard lift (touch_bar_offset),
-#   DEBUG = "1" draws the viewport diagnostic line (touch_bar_debug).
+#   DEBUG = "1" draws the viewport diagnostic line (touch_bar_debug),
+#   NOBAR = "1" keeps only the always-on clipboard helpers and mounts no bar
+#           (touch_bar off), so OSC 52 copy still works without the bar.
 # Pure file -> file: no network, no /data. Fails (rc 1) if inputs are missing
 # or unreadable, if SRC already carries this add-on's prelude (never inject
 # twice), or if the spliced output lacks the prelude marker (then OUT is
@@ -405,6 +408,7 @@ touchbar_inject() {
   _ti_off=$(touchbar_offset_clamp "${5:-0}")
   _ti_dbg=
   [ "${6:-}" = "1" ] && _ti_dbg=',"debug":1'
+  [ "${7:-}" = "1" ] && _ti_dbg="$_ti_dbg"',"bar":0'
   grep -q '__HASSBAR' "$_ti_src" 2>/dev/null && return 1
   awk -v theme="$_ti_theme" -v off="$_ti_off" -v dbg="$_ti_dbg" '
     NR==FNR { if (NR > 1) bar = bar "\n"; bar = bar $0; next }

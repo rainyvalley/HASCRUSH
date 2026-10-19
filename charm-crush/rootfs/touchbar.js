@@ -6,6 +6,12 @@
  *           mode-aware sequences a physical key would) / Paste (clipboard.
  *           Falls back to a paste-into-box dialog when the Clipboard API is
  *           unavailable, e.g. plain-http ingress).
+ * Always on (touch or desktop, bar or not): the clipboard helpers. ttyd 1.7.x
+ * ships no OSC 52 handler, so a copy from tmux or from Crush itself (both emit
+ * OSC 52) was silently discarded; here OSC 52 becomes a real clipboard write,
+ * a mouse selection (Shift+drag) is copied on release, and when the browser
+ * refuses a clipboard write (plain-http origin, no user gesture) a small
+ * tap-to-copy toast / selectable text box is shown instead.
  * Composition happens at the WebSocket send layer (the ttyd pty wire format is
  * one 0x30 input frame followed by raw bytes), so soft-keyboard, external
  * keyboard and composition input are all intercepted at once. Everything here
@@ -235,6 +241,197 @@
     } else pasteModal();
   }
 
+  /* ── clipboard (always on) ─────────────────────────────────────────── */
+  var MAX_CLIP = 1048576;
+
+  /* Synchronous copy through a throwaway textarea; needs a user gesture. */
+  function execCopy(text) {
+    var ok = false;
+    var ta = null;
+    try {
+      ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.appendChild(ta);
+      var prev = document.activeElement;
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      ok = !!document.execCommand('copy');
+      document.body.removeChild(ta);
+      ta = null;
+      if (prev && typeof prev.focus === 'function') prev.focus();
+    } catch (e) {
+      ok = false;
+      try { if (ta && ta.parentNode) ta.parentNode.removeChild(ta); } catch (e2) { /* ignore */ }
+    }
+    return ok;
+  }
+
+  /* Write text to the clipboard: async API first (secure context), then
+   * execCommand, then call onFail so the caller can offer a manual path. */
+  function writeClip(text, onFail) {
+    function fallback() {
+      if (execCopy(text)) return;
+      if (onFail) onFail();
+    }
+    try {
+      var cb = navigator.clipboard;
+      if (cb && typeof cb.writeText === 'function') {
+        var req = cb.writeText(text);
+        if (req && typeof req.then === 'function') { req.then(function () {}, fallback); return; }
+      }
+    } catch (e) { /* fall through */ }
+    fallback();
+  }
+
+  function removeEl(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  /* Browser refused a hands-off write: keep the text behind a tap, because a
+   * tap is a user gesture and may copy where the OSC 52 arrival could not. */
+  function clipToast(text) {
+    removeEl('hassbar-toast');
+    var c = COLORS;
+    var wrap = document.createElement('div');
+    wrap.id = 'hassbar-toast';
+    wrap.style.cssText = 'position:fixed;right:10px;top:10px;z-index:9999;display:flex;' +
+      'gap:8px;align-items:center;padding:8px 10px;border-radius:12px;' +
+      'background:' + c.card + ';color:' + c.fg + ';border:1px solid ' + c.hair + ';' +
+      'box-shadow:' + c.shadow + ';font:600 13px/1.2 system-ui,sans-serif;';
+    var label = document.createElement('span');
+    label.textContent = 'Terminal copied ' + text.length + ' chars';
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = 'Copy';
+    var x = document.createElement('button');
+    x.type = 'button'; x.textContent = '×';
+    var bs = 'border:0;border-radius:9px;padding:6px 12px;background:' + c.press +
+      ';color:' + c.fg + ';font:600 13px/1 system-ui,sans-serif;cursor:pointer;';
+    btn.style.cssText = bs; x.style.cssText = bs;
+    btn.onclick = function () {
+      if (execCopy(text)) removeEl('hassbar-toast');
+      else { removeEl('hassbar-toast'); copyBox(text); }
+    };
+    x.onclick = function () { removeEl('hassbar-toast'); };
+    wrap.appendChild(label); wrap.appendChild(btn); wrap.appendChild(x);
+    document.body.appendChild(wrap);
+    setTimeout(function () { removeEl('hassbar-toast'); }, 20000);
+  }
+
+  /* Last resort and the Copy button's no-selection view: the text in a
+   * selectable box the person can copy with the OS's own gesture. */
+  function copyBox(text) {
+    removeEl('hassbar-copy');
+    var c = COLORS;
+    var wrap = document.createElement('div');
+    wrap.id = 'hassbar-copy';
+    wrap.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);' +
+      'z-index:9999;display:flex;flex-direction:column;gap:8px;width:min(94vw,640px);' +
+      'max-height:80vh;padding:10px;border-radius:14px;background:' + c.card + ';' +
+      'border:1px solid ' + c.hair + ';box-shadow:' + c.shadow + ';';
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.readOnly = true;
+    ta.style.cssText = 'height:50vh;min-height:6em;border-radius:9px;padding:7px;' +
+      'border:1px solid ' + c.hair + ';background:transparent;color:' + c.fg + ';' +
+      'font:12px/1.35 Monaco,Consolas,monospace;white-space:pre;resize:none;';
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+    var bs = 'border:0;border-radius:9px;padding:8px 14px;background:' + c.press +
+      ';color:' + c.fg + ';font:600 13px/1 system-ui,sans-serif;cursor:pointer;';
+    var all = document.createElement('button');
+    all.type = 'button'; all.textContent = 'Copy all'; all.style.cssText = bs;
+    var close = document.createElement('button');
+    close.type = 'button'; close.textContent = 'Close'; close.style.cssText = bs;
+    all.onclick = function () {
+      ta.focus(); ta.select();
+      try { ta.setSelectionRange(0, text.length); } catch (e) { /* ignore */ }
+      var ok = false;
+      try { ok = !!document.execCommand('copy'); } catch (e) { ok = false; }
+      all.textContent = ok ? 'Copied' : 'Press Ctrl/Cmd+C';
+    };
+    close.onclick = function () { removeEl('hassbar-copy'); };
+    row.appendChild(all); row.appendChild(close);
+    wrap.appendChild(ta); wrap.appendChild(row);
+    document.body.appendChild(wrap);
+    ta.focus(); ta.select();
+  }
+
+  /* Visible terminal text (tmux redraws one screen; its scrollback lives in
+   * tmux copy-mode, not in xterm's buffer), trailing blank rows trimmed. */
+  function screenText() {
+    var t = term();
+    if (!t || !t.buffer || !t.buffer.active) return '';
+    var buf = t.buffer.active;
+    var lines = [];
+    for (var i = 0; i < buf.length; i++) {
+      var ln = buf.getLine(i);
+      lines.push(ln ? ln.translateToString(true) : '');
+    }
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
+  /* The bar's Copy: the xterm selection if there is one, else the screen in a
+   * selectable box. */
+  function doCopy() {
+    var t = term();
+    var sel = '';
+    try { if (t && t.hasSelection()) sel = t.getSelection(); } catch (e) { sel = ''; }
+    if (sel) {
+      if (execCopy(sel)) return;
+      writeClip(sel, function () { copyBox(sel); });
+      return;
+    }
+    copyBox(screenText());
+  }
+
+  /* OSC 52 ("52;<targets>;<base64>"): decode and copy. Query ("?") is never
+   * answered - a page must not be able to read the clipboard through the pty. */
+  function b64Utf8(b64) {
+    var bin = atob(b64.replace(/\s+/g, ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (typeof TextDecoder === 'function') return new TextDecoder('utf-8').decode(bytes);
+    return decodeURIComponent(escape(bin));
+  }
+  function onOsc52(data) {
+    try {
+      var i = String(data).indexOf(';');
+      var payload = i < 0 ? '' : String(data).slice(i + 1);
+      if (!payload || payload === '?' || payload.length > MAX_CLIP * 1.4) return true;
+      var text = b64Utf8(payload);
+      if (!text) return true;
+      writeClip(text, function () { clipToast(text); });
+    } catch (e) { /* malformed payload: ignore */ }
+    return true;
+  }
+
+  var clipReady = false;
+  function setupClipboard() {
+    if (clipReady) return;
+    var t = term();
+    if (!t) return;
+    clipReady = true;
+    try {
+      if (t.parser && typeof t.parser.registerOscHandler === 'function') {
+        t.parser.registerOscHandler(52, onOsc52);
+      }
+    } catch (e) { /* older client: selection copy below still works */ }
+    /* Native selection (Shift+drag while a TUI/tmux owns the mouse, or any
+     * drag with terminal_mouse off): copy on release; mouseup is a gesture. */
+    document.addEventListener('mouseup', function () {
+      try {
+        if (t.hasSelection()) {
+          var sel = t.getSelection();
+          if (sel && sel.length <= MAX_CLIP) execCopy(sel);
+        }
+      } catch (e) { /* ignore */ }
+    }, true);
+  }
+
   /* ── the bar ───────────────────────────────────────────────────────── */
   function injectCss() {
     var c = COLORS;
@@ -292,6 +489,7 @@
     { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab' },
     { id: 'esc',   label: 'Esc',   sticky: false, key: 'Escape', code: 'Escape' },
     { id: 'del',   label: 'Del',   sticky: false, key: 'Delete', code: 'Delete' },
+    { id: 'copy',  label: 'Copy',  sticky: false, key: null, code: null, action: 'copy' },
     { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' }
   ];
 
@@ -331,6 +529,7 @@
       el.onpointerdown = function (e) {
         e.preventDefault();
         if (b.action === 'paste') { doPaste(); return; }
+        if (b.action === 'copy') { doCopy(); return; }
         if (b.id === 'ctrl') {
           sticky.ctrl = !sticky.ctrl; paint(); return;
         }
@@ -503,12 +702,17 @@
   }
 
   /* Wait for the ttyd client to expose window.term (async token fetch), then
-   * mount. Give up quietly after 30s - a changed client must never break the
-   * terminal. */
-  if (!isTouchView()) return; /* desktop: no bar, no polling */
+   * set up the clipboard helpers and (touch devices, unless touch_bar is off)
+   * mount the bar. Give up quietly after 30s - a changed client must never
+   * break the terminal. */
+  var wantBar = cfg.bar !== 0 && isTouchView();
   var waited = 0;
   (function wait() {
-    if (term() && term().paste !== undefined && textareaEl()) { mountBar(); return; }
+    if (term() && term().paste !== undefined && textareaEl()) {
+      try { setupClipboard(); } catch (e) { /* never block the terminal */ }
+      if (wantBar) mountBar();
+      return;
+    }
     waited += 100;
     if (waited > 30000) return;
     setTimeout(wait, 100);

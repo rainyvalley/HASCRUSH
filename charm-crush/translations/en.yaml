@@ -121,6 +121,14 @@ configuration:
     name: Terminal Theme
     description: >-
       Color theme for the web terminal. Dark or light.
+  terminal_mouse:
+    name: Terminal Mouse
+    description: >-
+      On (default): mouse wheel scrolls history and clicks reach Crush, and
+      you select text by holding Shift (Option on a Mac) while dragging. Off:
+      a plain drag selects text in the browser, but the wheel and clicks no
+      longer act inside Crush. Copied text reaches your clipboard either way.
+      Applies on add-on restart.
   touch_bar:
     name: Touch Bar
     description: >-

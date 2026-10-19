@@ -50,6 +50,7 @@ options:
   ollama_api_key: ""
   terminal_font_size: 14
   terminal_theme: dark
+  terminal_mouse: true   # false = plain drag selects text (tmux mouse off); true keeps wheel/click in the TUI
   touch_bar: true
   touch_bar_offset: 0   # 0 = auto (-40 on iOS/iPadOS, 0 elsewhere); non-zero overrides
   touch_bar_debug: false   # diagnostic line above the bar (viewport numbers)
@@ -78,6 +79,7 @@ schema:
   ollama_api_key: str?
   terminal_font_size: int(10,24)
   terminal_theme: list(dark|light)
+  terminal_mouse: bool
   touch_bar: bool
   touch_bar_offset: int(-400,400)
   touch_bar_debug: bool
