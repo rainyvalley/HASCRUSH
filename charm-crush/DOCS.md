@@ -12,340 +12,212 @@ Charm's terminal AI tools running inside Home Assistant, pointed at your own mod
 
 # HASSCrush — the Crush add-on for Home Assistant
 
-Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first AI coding agent — inside Home Assistant, pointed at **your own Ollama models**, with optional shared memory.
+Runs [Charm Crush](https://github.com/charmbracelet/crush), a terminal-based AI coding agent, inside Home Assistant. It works with Ollama (cloud or on your LAN) or any OpenAI-compatible API, and can connect to MCP servers such as a memory layer.
 
-> The ttyd-over-ingress + persistent-tmux add-on shape was inspired by [robsonfelix's claudecode add-on](https://github.com/robsonfelix/robsonfelix-hass-addons). This add-on runs Crush with your Ollama models instead.
+> The ttyd-over-ingress + persistent-tmux add-on shape was inspired by [robsonfelix's claudecode add-on](https://github.com/robsonfelix/robsonfelix-hass-addons).
 
-## Features
+## What it does today
 
-- **Crush in the HA sidebar** — web terminal (ttyd) behind HA's own authentication; opens from the sidebar or "Open Web UI"
-- **Your models, any of them** — defaults: **DeepSeek V4.1 Flash** for the daily, helper and deep tiers (thinking; daily effort high, deep effort max); the picker auto-discovers *every* model your providers serve (all Ollama models, not just DeepSeek); refresh = add-on restart
-- **Persistent sessions** — tmux survives refresh/disconnect; crushrc + keys live in `/homeassistant/.crushdata/` (HA backups include it)
-- **Touch bar (optional)** — on-screen key bar at the bottom of the web terminal: `Ctrl`, `Alt`, `Tab` latch like held keys, `Esc`/`Del`/`Paste` are one-shot; made for phones/tablets and toggleable in the Options tab
-- **Central config (optional)** — fetch your crushrc from any HTTP URL each start; a fleet of machines shares one config
-- **Memory (optional)** — point at any MCP memory server (e.g. a mem0-style shared layer your other chat clients also use); empty = off
-- **`ha` CLI preinstalled and pre-authenticated** — Supervisor token env-only, never written to disk
+- **Crush in the HA sidebar.** A web terminal (ttyd) served through HA ingress, so HA's own login protects it. It opens from the sidebar or "Open Web UI".
+- **Model providers.** Ollama Cloud and/or a LAN Ollama host, or any OpenAI-compatible API (OpenRouter, OpenAI, and similar) through the `third_party` provider.
+- **Model slots.** Separate daily, helper and deep models, each chosen from a picklist or set to a custom model id. Reasoning effort is configurable. The in-terminal picker (Ctrl+L) lists every model the providers expose.
+- **Persistent sessions.** tmux keeps the session across refreshes and disconnects. Config and keys live in `/homeassistant/.crushdata/` and are included in HA backups.
+- **MCP servers.** Memory, vision, search, CAD or any other MCP server over HTTP or stdio, configured from one Options field. Tokens can be pasted or fetched from a URL.
+- **Central config (optional).** Fetch a shared crushrc from an HTTP URL on every start, so several machines can use one config.
+- **Touch bar (optional).** An on-screen key bar (Ctrl, Alt, Tab, Esc, Del, Paste) for phones and tablets. It only appears on touch devices.
+- **Home Assistant access.** The `ha` CLI is preinstalled, and `HA_URL` / `HA_TOKEN` are set so Crush can call the Core REST API and the Supervisor API (see [Home Assistant API access](#home-assistant-api-access)).
+- **Optional auto-update.** Crush can update itself on add-on start, with rollback. It is off by default.
 
 ## Requirements
 
-- Home Assistant OS / supervised install (add-on capable)
-- An Ollama endpoint: **Ollama Cloud** (ollama.com API key) and/or a **LAN Ollama** host for local/vision models
+- Home Assistant OS or a supervised install (anything that supports add-ons).
+- At least one model source: an Ollama Cloud API key, a LAN Ollama host, or an OpenAI-compatible API key.
 
 ## Install
 
-1. In HA: **Settings → Add-ons → Add-on Store → ⋮ (top right) → Repositories**, add:
-   `https://github.com/rainyvalley/HASCRUSH`
-2. Refresh the store; install **Crush**.
-3. Configure options (see below) — at minimum an **Ollama API Key** (or a key URL), unless your config template resolves the key itself.
-4. Start the add-on; open it from the sidebar (panel title "Crush").
+1. In HA: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, add `https://github.com/rainyvalley/HASCRUSH`.
+2. Refresh the store and install **Crush**.
+3. In the **Configuration** tab, set a model source (for example `ollama_api_key`, or `provider: third_party` with a base URL and key).
+4. Start the add-on and open it from the sidebar.
 
 ## Options
 
 | Option | Default | Description |
 |---|---|---|
 | `provider` | `ollama` | `ollama` (Ollama Cloud + LAN) or `third_party` (any OpenAI-compatible API) |
-| `third_party_base_url` | *(empty)* | Required with `third_party`: e.g. `https://openrouter.ai/api/v1` |
+| `third_party_base_url` | *(empty)* | Required with `third_party`, e.g. `https://openrouter.ai/api/v1` |
 | `third_party_api_key` | *(empty)* | Required with `third_party` |
-| `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local/vision models |
-| `crush_config_url` | *(empty)* | HTTP URL fetching your crushrc each start (empty = fallback config) |
-| `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL) |
-| `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
-| `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (memory/vision/CAD token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
-| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default - **picklist** of the models this release knows |
-| `crush_large_model_custom` | *(empty)* | Free-form model id that **overrides** the daily picklist when set (e.g. a LAN Ollama tag) |
-| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) - picklist |
-| `crush_small_model_custom` | *(empty)* | Free-form model id that **overrides** the helper picklist when set |
-| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep reasoning model - picklist; same model as the daily default, run with `crush_reasoning_effort: max` for deep work |
-| `crush_deep_model_custom` | *(empty)* | Free-form model id that **overrides** the deep picklist when set |
-| `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
-| `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
-| `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see the MCP servers section); empty = template servers as-is |
-| `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
-| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once. Shown only on touch devices (a desktop browser with a fine pointer gets no bar and keeps the full terminal); it floats above the on-screen keyboard. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
-| `touch_bar_offset` | `0` | Extra px for the touch bar's keyboard lift (-400..400). `0` = platform default: **-40 on iOS/iPadOS** (the browser over-reports the keyboard there) and **0 on Android/desktop**; any non-zero value overrides that outright (negative lowers the bar if a band stays under the keys, positive lifts it if keys hide). Existing installs keep their saved value; applies on add-on restart |
-| `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
-| `working_directory` | `/homeassistant` | Where crush starts |
-| `session_persistence` | `true` | tmux session survives disconnects |
-| `auto_update_crush` | `false` | Update crush on add-on start (with rollback). Off by default since 1.0.33 for new installs: enabling it downloads the latest upstream crush and runs it as root at every start, verified only against a checksum published in the same release. Installs that already saved this option keep their value |
+| `local_ollama_url` | *(empty)* | LAN Ollama (OpenAI-compatible `/v1`) for local or vision models |
+| `ollama_api_key` | *(empty)* | Ollama Cloud key; wins over the key URL |
+| `ollama_key_url` | *(empty)* | HTTP URL returning `OLLAMA_API_KEY=...`; validated like `crush_config_url` (http(s), URL-safe characters; plain http logs a warning) |
+| `crush_config_url` | *(empty)* | HTTP URL of a crushrc fetched on each start; empty uses the built-in config |
+| `disti_token` | *(empty)* | Optional download credential sent as `X-Disti-Token` on key and token fetches, for a config server that gates its secret files. Not an MCP bearer token |
+| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily model (picklist) |
+| `crush_large_model_custom` | *(empty)* | Free-form model id; overrides the daily picklist when set |
+| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model for summaries and titles (picklist) |
+| `crush_small_model_custom` | *(empty)* | Free-form id; overrides the helper picklist |
+| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep-reasoning model (picklist) |
+| `crush_deep_model_custom` | *(empty)* | Free-form id; overrides the deep picklist |
+| `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`, `high` or `max` |
+| `crush_discover_models` | `true` | Add each provider's full model catalog to the picker; off shows only registered models |
+| `mcp_servers` | *(empty)* | All MCP servers as one JSON array (see [MCP servers](#mcp-servers)); empty keeps the template's servers |
+| `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal appearance |
+| `touch_bar` | `true` | Key bar on touch devices; desktop browsers with a fine pointer get no bar. Applies on restart |
+| `touch_bar_offset` | `0` | Extra px to lift the bar above the on-screen keyboard (-400..400). `0` uses the platform default (-40 on iOS/iPadOS, 0 elsewhere); any other value overrides it |
+| `touch_bar_debug` | `false` | Draw viewport diagnostics above the bar, for phones where it sits wrong |
+| `working_directory` | `/homeassistant` | Where Crush starts |
+| `session_persistence` | `true` | Keep the tmux session across disconnects |
+| `auto_update_crush` | `false` | Update Crush on add-on start, with rollback. When on, the latest upstream release is downloaded and run on every start, verified against a checksum published in the same release |
 
-## LLM provider: Ollama (default) or any 3rd-party OpenAI-compatible API
+## Providers
 
-The **Provider** picklist in the Options tab chooses where models come from:
+The `provider` option chooses where models come from.
 
-- **`ollama`** (default) — models live in your Ollama: `ollama.com/cloud` (key from the API Key option / key URL) + `ollama-local` on your LAN (`local_ollama_url`).
-- **`third_party`** — check it and two more fields appear: **Base URL** (e.g. `https://openrouter.ai/api/v1`, `https://api.openai.com/v1`, or any OpenAI-compatible endpoint) and **API Key**. On start, the config's model ids (`ollama-cloud/...`) are remapped to your provider automatically — same models, same slots, different backend.
+- **`ollama`** (default): Ollama Cloud (`ollama_api_key` or `ollama_key_url`) plus an optional LAN host (`local_ollama_url`).
+- **`third_party`**: set `third_party_base_url` and `third_party_api_key`. On start, the config's `ollama-cloud/...` model ids are remapped to your provider.
 
-Examples:
-
-| You want | Options to set |
+| You want | Set |
 |---|---|
-| Ollama Cloud + LAN Ollama (default) | `provider=ollama`, `ollama_api_key` (or key URL), optional `local_ollama_url` |
-| OpenRouter models | `provider=third_party`, `third_party_base_url=https://openrouter.ai/api/v1`, `third_party_api_key=sk-or-...` |
-| OpenAI | `provider=third_party`, `third_party_base_url=https://api.openai.com/v1`, `third_party_api_key=sk-...` |
-| Any other OpenAI-compatible | `provider=third_party`, its URL + key |
+| Ollama Cloud (and optionally a LAN host) | `provider=ollama`, `ollama_api_key`, optionally `local_ollama_url` |
+| OpenRouter | `provider=third_party`, `third_party_base_url=https://openrouter.ai/api/v1`, `third_party_api_key=...` |
+| OpenAI | `provider=third_party`, `third_party_base_url=https://api.openai.com/v1`, `third_party_api_key=...` |
+| Another OpenAI-compatible API | `provider=third_party`, its URL and key |
 
-Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_URL`, `THIRD_PARTY_API_KEY`, `LOCAL_OLLAMA_URL`.
+## Models
 
-## Models: choose, add, refresh
+**Switching.** In the terminal press Ctrl+L (or type `/` and choose *models*). The picker lists every model from your config, grouped by provider, including the auto-discovered catalog.
 
-**Choosing at runtime** — in the TUI:
-1. Type `/` → **models** (crush's own keybinding is **Ctrl+L**) → the model picker.
-2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`), including the auto-discovered catalog.
-3. `DeepSeek V4.1 Flash` is the default for everything (set `crush_reasoning_effort` to `max` for deep, thinking-heavy tasks; `GLM 5.3 Flash` and `GLM 5.3` stay available in the picker); pick a vision model and drop in an image to inspect it.
+**Refreshing.** The list is read when the add-on starts. With `crush_discover_models` on, each start re-queries every provider's catalog, so new models appear after a restart. A running session keeps the catalog it started with.
 
-**Refreshing the model list** — the picker refreshes on add-on restart. With **Auto-discover All Models** (`crush_discover_models`, default on; `--discover-models true` under the hood) every start re-queries each provider's catalog, so new models appear with no config edit. For anything needing explicit metadata (prices, context window, effort), register it:
-
-1. **Central template (recommended for multi-machine)**: edit the template served at your `crush_config_url` URL — then *restart the add-on*. On start it re-fetches, and new models appear in the picker.
-2. **Manual**: edit `/homeassistant/.crushdata/config/crush/crushrc` inside the add-on (via the web terminal or the HA file editor), then restart the add-on.
-
-> **Note on refresh**: model registrations are read at crushrc load; the picker only refreshes on add-on (or crush) restart. A running session keeps its startup model catalog.
-
-**Example: adding a new model to the config** (in the central template or the local crushrc):
+**Registering a model with metadata** (prices, context window, reasoning effort) goes in the crushrc, either in the central template at `crush_config_url` or in `/homeassistant/.crushdata/config/crush/crushrc`. Restart the add-on afterwards.
 
 ```bash
-# register a cloud model with prices (cost display uses these):
-model add ollama-cloud/kimi-k3 --name "Kimi K3" --context-window 1048576 \
+model add ollama-cloud/example-model --name "Example Model" --context-window 1048576 \
   --default-max-tokens 16000 --can-reason true --reasoning-effort high \
   --price-input 3.27 --price-output 16.33
-# slots choose the DEFAULT the agent starts with:
-model large ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
-model small ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
+# slots pick the default model for each role:
+model large ollama-cloud/example-model --reasoning-effort high
+model small ollama-cloud/example-model --reasoning-effort high
 ```
 
-## Memory (an MCP memory server)
+## MCP servers
 
-Memory is one entry in the `mcp_servers` JSON (see the MCP servers section), not a separate field:
-
-| Want | Set |
-|---|---|
-| A shared memory layer (e.g. a mem0-style server your other chat clients also use) | its URL + `token`/`token_url` in one entry |
-| Another MCP memory server | an entry named anything, its URL + token |
-| No memory | omit the memory entry (and set `mcp_servers` if any other server is wanted) |
-
-**Usage from the agent**, once wired (example tool names from a mem0-style memory server; a different server exposes similar ones):
-
-```bash
-# the agent recalls automatically (server instructions tell it to search first); manually:
-search_memory(query="which camera covered the greenhouse", user_id="you@example.com")
-# save something durable:
-add_memory(messages='[{"role":"user","content":"Trash cans go out Thursday evenings."}]', user_id="you@example.com")
-# audit one memory:
-memory_history(memory_id="<id from search>")
-```
-
-`user_id` matters: it's the memory space. Use the **same id in every client** and everything shares one brain.
-
-**Multiple users on the same memory server?** If it supports per-token user grants (its README documents the mechanism — e.g. a wrapper mapping tokens to users via an env like `MEM0_USER_<sha256(token)[:8].upper()>=who@example.com,...`), issue one token per user and set each install's memory entry to its own token.
-
-## MCP servers (memory, vision, search, CAD, ...)
-
-**All** MCP servers — memory included — are wired from the Options tab via one option: `mcp_servers`, a JSON array with one entry per server. Entries **replace only their own server's line**; a central template's other `mcp add` lines stay untouched. Empty = template servers as-is. Applies on add-on restart.
-
-**Complete example** (fake host/keys — copy the shape, replace the values):
+All MCP servers, memory included, are configured by one option, `mcp_servers`: a JSON array with one entry per server. Entries replace only their own server's line; any other `mcp add` lines in a central template are left alone. Empty keeps the template as it is. Applies on restart.
 
 ```json
 [{"name":"memory","url":"http://mcp.example.lan:8300/mcp","token_url":"http://mcp.example.lan/memory-mcp.token"},
  {"name":"vision","url":"http://mcp.example.lan:3011/mcp","token":"sample-vision-token"},
  {"name":"search","url":"http://mcp.example.lan:3000/mcp"},
- {"name":"browser","url":"http://mcp.example.lan:8931/mcp"},
  {"name":"cad","command":"socat","args":["STDIO","TCP:mcp.example.lan:3010"],"token_url":"http://mcp.example.lan/cad-mcp.token","timeout":20}]
 ```
 
 Entry forms:
 
-- **HTTP** — `name` + `url`, plus `token_url` (fetched at startup) or `token` (pasted directly); omit both for tokenless servers (`search`, `browser` above).
-- **stdio** — `name` + `command` + `args` (each element becomes one `--args` token, no shell splitting) + optional `timeout`.
-- **stdio + token** (since 1.0.25) — `command`/`args` entries also accept `token_url` or `token`. When one resolves, the entry is emitted as a `sh -c` **gate wrapper**: the token goes out as the *first* stdin line, then the command is exec'd (e.g. `socat` relaying to a TCP-only MCP bridge that requires the token first — the `cad` shape above; the relay tool must be in the add-on image, and socat already is). The `docker run`…`STDIO TCP:…` form stays for machines that have their own docker socket.
-- If a token URL yields nothing, the server is still added **without** an auth header / gate and a warning lands in the add-on log — a LAN server may legitimately not need auth.
+- **HTTP:** `name` and `url`, plus `token_url` (fetched at start) or `token` (pasted). Omit both for servers that need no auth.
+- **stdio:** `name`, `command` and `args` (each element is passed as one argument, with no shell splitting), plus an optional `timeout`.
+- **stdio with a token:** `command`/`args` entries also accept `token_url` or `token`. The entry then runs through a small `sh -c` wrapper that writes the token as the first stdin line before starting the command, for example `socat` relaying to a TCP bridge that expects a token first.
+- If a token URL returns nothing, the server is still added without auth and a warning is written to the add-on log.
+- Invalid JSON or an entry without a name logs a warning and skips that entry only.
 
-**Combining several servers** is just more array entries; invalid JSON or a nameless entry logs a warning and skips that entry only.
+Resolved tokens are exported as `MCP_TOKEN_<name>` and the generated crushrc refers to them as `$VARS`, so stored configs stay shareable. `-` in a server name becomes `_` in the variable name (`home-assistant` → `MCP_TOKEN_home_assistant`). Two names that map to the same variable collide, and the later token-bearing entry is skipped with a warning.
 
-Secrets never land in the generated crushrc: the add-on exports resolved tokens as `MCP_TOKEN_<name>` and the rc references them as `$VARS`, so stored configs stay shareable. Server names may contain `-`; env var names cannot, so `-` becomes `_` in the variable (`home-assistant` -> `MCP_TOKEN_home_assistant`). Two names that map to the same variable (`a-b` and `a_b`) collide: the later token-bearing entry is skipped with a warning in the add-on log - rename one of them.
+**Memory.** A memory server is just an entry in this array. Use the same `user_id` in every client that talks to the same memory server, so they share one memory space. If the server supports per-token user mapping, issue one token per user and give each install its own.
 
-## Central config (optional)
+## Central config
 
-`crush_config_url` = any **plain-HTTP URL** of a crushrc text file. The natural host: another machine already running Crush (share its rc file), or any static server (Caddy, `python -m http.server`, NAS, GitHub Pages). On start the add-on fetches it; keys stay out of the template — the rc resolves secrets from the environment the add-on exports, so one template serves a fleet safely.
+`crush_config_url` points to a crushrc text file served over HTTP: another machine running Crush, a static file server or a NAS all work. The file is fetched on every start. Keep secrets out of it: the rc reads them from the environment the add-on exports, so one template can serve several machines.
 
-Validated at fetch time (since 1.0.22): the URL must be http(s) with URL-safe characters only, the fetched file is capped at 1 MB, and it must still look like a crushrc (`provider` / `model` markers) — anything else falls back to the built-in config with a `[addon][WARN]` in the log. Plain `http://` URLs warn explicitly: the script could be modified in transit on the wire, so prefer `https://` where the host supports it.
+Checks applied to the fetch:
 
-**Config-version check (since 1.0.24)**: a central template stamped `# config-version: N` is verified at every start against the matching `/config.version` published beside it. Current → `[addon] crush config-version N - current`; a mismatch or unreachable version is logged as a `[addon][WARN]` so a stale config (or a distribution server with the version file and template out of sync) shows up in the add-on log instead of grinding on silently. Templates without a stamp still work — the check just reports `installed=none`.
+- The URL must be http(s) with URL-safe characters. Plain `http://` logs a warning, so prefer `https://` where available.
+- The file is capped at 1 MB and must look like a crushrc (`provider` / `model` markers). Otherwise the built-in config is used and a `[addon][WARN]` line is logged.
+- A template stamped `# config-version: N` is compared at each start against `/config.version` published next to it. The log reports whether the installed config is current or stale. Templates without a stamp still work.
 
-## API usage (the `ha` CLI + HA's REST)
+## Home Assistant API access
 
-`HA_TOKEN` (Supervisor token) and `HA_URL` are in the environment; use them directly:
+`HA_URL` and `HA_TOKEN` are set in the environment, and the `ha` CLI picks them up automatically. Crush can run these itself; just ask.
 
 ```bash
-# CLI (simplest — it picks up HA_TOKEN/HA_URL automatically):
 ha core logs 2>&1 | tail -50
 ha core stats
 ha host info
-ha network info
 
-# raw REST (same token):
-curl -s -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  "$HA_URL/api/states/light.kitchen" | jq '.state'
+# REST against Home Assistant Core
+curl -s -H "Authorization: Bearer $HA_TOKEN" "$HA_URL/api/states/light.kitchen" | jq '.state'
 
-# call a service:
-curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"entity_id":"switch.office_fan"}' \
-  "$HA_URL/api/services/switch/toggle"
+# call a service
+curl -s -X POST -H "Authorization: Bearer $HA_TOKEN" -H "Content-Type: application/json" \
+  -d '{"entity_id":"switch.office_fan"}' "$HA_URL/api/services/switch/toggle"
 ```
 
-Crush can run all of this; just ask it to. Note `HA_URL=http://supervisor/core` only resolves inside add-ons.
+`HA_URL` is `http://supervisor/core`, which only resolves inside add-ons. There is no option for a Home Assistant token; Home Assistant provides one to the add-on. Long-lived access tokens from your profile page don't work against `http://supervisor`.
 
-### Where the Supervisor API key comes from (no field for it - by design)
+The add-on uses the default Supervisor role. It can reach Core (`/core`, `/homeassistant`) and read Supervisor info, and the following are expected to be refused:
 
-There is **no option field** for the Supervisor API key, and you never need to paste one:
-the Supervisor itself injects a per-install token into the add-on as the environment
-variable `SUPERVISOR_TOKEN` (re-exported here as `HA_TOKEN`). It becomes valid only
-because `config.yaml` declares the API permissions:
-
-| config.yaml flag | Grants |
+| Attempt | Result |
 |---|---|
-| `homeassistant_api: true` | calls to HA Core through the proxy (`http://supervisor/core/api/...`) |
-| `hassio_api: true` + `hassio_role: manager` | Supervisor API calls (`http://supervisor/...`) with manager-level reach |
-| `auth_api: true` | validating HA usernames/passwords via the Supervisor `/auth` endpoint |
+| `/hassio/...` or `/api/hassio/...` paths | 403 |
+| `supervisor.*` / `hassio.*` WebSocket commands | `unauthorized`; use the `ha` CLI or REST |
+| Add-on, backup, host or OS management | 403 (needs a higher role) |
+| docker CLI or socket | not available (no `docker_api` / `full_access`) |
 
-So "adding a key" is not something the Options tab can do - the key rotates with each
-install/update and the permission flags are fixed at build time. If you see
-`401 Unauthorized` / `403 Forbidden` from these APIs, the fix is to **update or reinstall
-the add-on** (so a fresh token gets issued and current permission flags land), not to
-fill in a field.
-
-Add-on releases since **1.0.20** also recover the token when s6-overlay stripped the
-container environment: startup resolves `SUPERVISOR_TOKEN` from the real environment,
-the legacy `HASSIO_TOKEN` alias, and the s6 `container_environment` dump (in that
-order), then re-exports it under both names for the `ha` CLI and crush sessions.
-
-**Denials that are normal (do not "fix" them)** - these are the attempts that are
-supposed to be denied:
-
-| What was attempted | Response | Why |
-|---|---|---|
-| `http://supervisor/hassio/...` or `${HA_URL}/api/hassio/...` | 403 | blacklisted path for every add-on (blocks reaching the `hassio` integration through Core) |
-| WebSocket command types `supervisor.*` / `hassio.*` via `ws://supervisor/core/websocket` | `unauthorized` | blocked in the core proxy since Supervisor 2026.08 (#7123) - use the `ha` CLI or REST instead |
-| `/os/ssh/authorized_keys`, `/addons/<slug>/security` | 403 | need the `admin` role; this add-on deliberately runs `manager` |
-| docker CLI / docker socket | fails | no `docker_api`/`full_access` by design (better security rating); toggle **Protection mode** per-install if a task truly needs it |
-| a long-lived access token from your HA Profile page against `http://supervisor` | 401 | profile tokens are HA Core tokens - the supervisor proxy only accepts the injected `SUPERVISOR_TOKEN` |
-
-At every add-on start, `run.sh` also self-checks both endpoints (`http://supervisor/info`
-and `http://supervisor/core/api/`) and prints an OK or `DENIED <code>` line with the
-cause to the add-on log. When the token itself could not be resolved at all, the log
-shows a `SUPERVISOR_TOKEN missing` warning instead (see Troubleshooting).
-
-The agent-facing version of these rules ships as the default `CRUSH.md`
-(in `/homeassistant/.crushdata/`): a **Hard Limits** block that Crush ingests on
-every start, telling it what is already wired (never ask for keys) and which
-denials to not retry. Written on first start; pre-1.0.12 installs get it
-injected automatically on the next add-on restart (user edits preserved).
+At each start the add-on log prints an OK or `DENIED <code>` line for the Supervisor and Core endpoints. A default `CRUSH.md` is written to `/homeassistant/.crushdata/` on first start with the same limits, so the agent doesn't keep retrying refused calls. Your edits to it are kept.
 
 ## Environment variables
 
-Every option has an env equivalent. **Precedence: real environment > env file > Options tab.**
+Every option has an environment equivalent. Precedence: **real environment > env file > Options tab**.
 
 | Env var | Matches option | Notes |
 |---|---|---|
-| `THIRD_PARTY_BASE_URL` | Third-Party Base URL | Required with Provider = third_party (OpenAI-compatible endpoint) |
-| `THIRD_PARTY_API_KEY` | Third-Party API Key | Required with Provider = third_party |
-| `LOCAL_OLLAMA_URL` | LAN Ollama URL | Local Ollama base for `ollama-local` models |
-| `CRUSH_LARGE_MODEL` | Default daily model | Registration id (`provider/model`) |
-| `CRUSH_SMALL_MODEL` | Helper model | Summaries/titles |
-| `CRUSH_DEEP_MODEL` | Deep model | Switch to it via the TUI picker |
-| `CRUSH_REASONING_EFFORT` | Daily-model effort | `low` / `high` / `max` |
-| `CRUSH_DISCOVER_MODELS` | Auto-discover All Models | `false` disables provider-catalog auto-discovery |
-| `OLLAMA_API_KEY` | Ollama API Key | Ollama Cloud key (ollama.com) |
-| `OLLAMA_KEY_URL` | Ollama API Key URL | URL fetching `OLLAMA_API_KEY=...` |
-| `MCP_SERVERS` | MCP Servers (JSON) | Same JSON array the option takes; beats the Options tab. Per-entry tokens ride inside the array (`token` / `token_url`) |
-| `CRUSH_CONFIG_URL` | Central crushrc Template URL | HTTP URL of the shared crushrc |
-| `TERM` | — | xterm-256color (set by the add-on) |
+| `THIRD_PARTY_BASE_URL` | `third_party_base_url` | Required with `provider=third_party` |
+| `THIRD_PARTY_API_KEY` | `third_party_api_key` | Required with `provider=third_party` |
+| `LOCAL_OLLAMA_URL` | `local_ollama_url` | Base URL for `ollama-local` models |
+| `CRUSH_LARGE_MODEL` | `crush_large_model` | Registration id (`provider/model`) |
+| `CRUSH_SMALL_MODEL` | `crush_small_model` | Summaries and titles |
+| `CRUSH_DEEP_MODEL` | `crush_deep_model` | Deep-reasoning model |
+| `CRUSH_REASONING_EFFORT` | `crush_reasoning_effort` | `low`, `high` or `max` |
+| `CRUSH_DISCOVER_MODELS` | `crush_discover_models` | `false` disables catalog discovery |
+| `OLLAMA_API_KEY` | `ollama_api_key` | Ollama Cloud key |
+| `OLLAMA_KEY_URL` | `ollama_key_url` | URL returning `OLLAMA_API_KEY=...` |
+| `MCP_SERVERS` | `mcp_servers` | Same JSON array; per-entry tokens go inside it |
+| `CRUSH_CONFIG_URL` | `crush_config_url` | HTTP URL of the shared crushrc |
 
 **Where to set them**
 
-1. **The env file** — `/homeassistant/.crushdata/env`, one `KEY=VALUE` line each:
+1. **The env file**, `/homeassistant/.crushdata/env`, one `KEY=VALUE` per line. It is read on every start, wins over the Options tab, is included in HA backups and is `chmod 600`. Only well-formed `KEY=VALUE` lines are read; anything else is skipped and logged, never executed.
+2. **The Options tab.**
+3. **The real container environment** (`docker run -e`, supervised installs), which has the highest precedence.
 
-   ```bash
-   OLLAMA_API_KEY=...
-   # MCP_TOKEN_* values are NOT set by hand: the add-on exports one per
-   # mcp_servers entry after resolving that entry's own token/token_url.
-   # A manually set value is only read by a fetched template that
-   # references $MCP_TOKEN_<name> itself.
-   ```
+`MCP_TOKEN_*` values are exported by the add-on from each `mcp_servers` entry. Setting one by hand only matters to a fetched template that references `$MCP_TOKEN_<name>` itself.
 
-   Sourced every start; beats the Options tab; ships in HA backups; `chmod 600`.
-   Since 1.0.22 only well-formed `KEY=VALUE` lines are sourced — anything else
-   (shell commands, `curl ... | sh`, multiline values) is **skipped and logged**
-   with a `[addon][WARN]`, never executed.
-2. **The Options tab** — same names, UI form.
-3. **Real env** (`docker run -e`, supervised installs only) — highest precedence.
-
-A fetched central crushrc resolves its secrets from these envs — never inline — so one template stays fleet-safe.
-
-## File locations (inside the add-on)
+## File locations
 
 | Path | Purpose |
 |---|---|
-| `/homeassistant/.crushdata/config/crush/crushrc` | your crushrc (persistent, fetched-from-template or hand-edited) |
-| `/homeassistant/.crushdata/config/crush/ollama.env` | persisted API keys (chmod 600; in HA backups) |
-| `/homeassistant/.crushdata/CRUSH.md` | standing instructions (path mapping, `ha` usage, log levels) |
-| `/homeassistant/.crushdata/data/` | crush session data |
-| `/homeassistant/.crushdata/env` | optional env-file defaults (KEY=VALUE; wins over the Options tab) |
-| `/homeassistant/.crushdata/tmux.conf` | user tmux overrides (sourced last) |
+| `/homeassistant/.crushdata/config/crush/crushrc` | Your crushrc (fetched from the template or hand-edited) |
+| `/homeassistant/.crushdata/config/crush/ollama.env` | Persisted API keys (`chmod 600`) |
+| `/homeassistant/.crushdata/CRUSH.md` | Standing instructions for the agent (paths, `ha` usage, refused calls) |
+| `/homeassistant/.crushdata/data/` | Crush session data |
+| `/homeassistant/.crushdata/env` | Optional env-file defaults |
+| `/homeassistant/.crushdata/tmux.conf` | Your tmux overrides, sourced last |
 
-## Security
+## Security notes
 
-- **Store rating 8/8.** The Supervisor scores an add-on from 5 up: ingress adds 2, a custom AppArmor
-  profile adds 1, and `hassio_role: manager`/`admin`, `host_network`, `host_pid`, privileged
-  capabilities, docker access and `full_access` take points away. This add-on claims ingress only,
-  ships `apparmor.txt` (a profile that confines the kernel surface while letting the workload inside
-  the container do its job) and leaves the Supervisor role at the **default**: `/core` +
-  `/homeassistant` through `homeassistant_api`, nothing that manages add-ons, backups, the host or the
-  OS. **No `full_access`, no Docker API, no host networking, no privileged caps.** Toggling
-  **Protection mode** per-install remains the (rating-breaking) escape hatch if a task truly needs
-  docker/host reach.
-- The Supervisor token (`SUPERVISOR_TOKEN`) is env-only; never written to disk or configs.
-- The web terminal is a pinned static `ttyd` binary (sha256-verified at image build since 1.0.22);
-  it serves a live shell and is **only reachable through HA ingress** — HA's own authentication is
-  the boundary in front of it, and it is never published directly. Since 1.0.33 this is enforced by
-  address, not just by a header: ttyd listens on loopback only (`127.0.0.1:7682`) and a small
-  `socat` gate on the ingress port (`7681`) relays only connections whose source is the Supervisor
-  ingress proxy (`172.30.32.2`, a fixed Home Assistant address; constants `INGRESS_ADDR` etc. in
-  `rootfs/lib.sh`). Other containers on the HA network and the LAN can no longer reach the shell,
-  which resolves the earlier "origin check only" limitation of the `X-Hass-Source` gate (1.0.27).
-  That header check (`--auth-header X-Hass-Source`) is kept as defense in depth. ttyd cannot bind to
-  the ingress address itself because that address belongs to the Supervisor container. If the gate
-  process dies the panel goes dark rather than open. This relies on the add-on running on the
-  default hassio bridge network (it does not use `host_network`). The optional touch bar rides the
-  same connection: `run.sh` splices it into a copy of ttyd's own client page (extracted from the
-  pinned binary at image build) and serves it through ttyd's `--index` option — no extra listener or
-  port exists, and with the option off the stock page is served unchanged.
-- API keys persist inside the HA config dir — included in HA backups. Protect backups accordingly,
-  and rotate keys if a backup leaves your control.
-- The memory layer is LAN-authenticated separately by its own bearer; don't reuse tokens across services.
+- The web terminal is a live shell. It is reachable only through HA ingress, so Home Assistant's own login is the boundary. ttyd listens on loopback only, and a small `socat` gate on the ingress port relays only connections from the Supervisor's ingress proxy. ttyd's `X-Hass-Source` header check stays on as a second layer. The terminal needs the default hassio bridge network (the add-on does not use `host_network`).
+- The add-on has a custom AppArmor profile, no `full_access`, no Docker API, no host networking and no privileged capabilities. Toggling **Protection mode** on a single install is the escape hatch if a task truly needs more reach.
+- ttyd is a pinned binary verified by sha256 at image build.
+- API keys are stored in the HA config directory, so they appear in HA backups. Protect backups, and rotate keys if one leaves your control.
+- Use a separate bearer token for each service; don't reuse the memory server's token elsewhere.
 
 ## Troubleshooting
 
-- **"Choose a model" onboarding on first launch**: no crushrc resolved — check the add-on log for `[addon]` lines. Set `ollama_api_key` or confirm `crush_config_url` is reachable from the HA host.
-- **`Unauthorized` errors in crush**: stale key — set the `ollama_api_key` option directly (it wins over everything), then restart the add-on.
-- **Model not in picker**: confirm the **Auto-discover All Models** option is on and restart the add-on (it lists every model the provider catalog exposes); for prices/ctx/vision metadata, register the model explicitly in the crushrc (central template or local file)
-- **`ha` command errors**: `HA_URL`/`HA_TOKEN` are automapped; if `ha` still fails, check the Supervisor connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
-- **Supervisor API `401` / `403` denials**: there is deliberately **no field to add a Supervisor API key** —
-  the Supervisor injects `SUPERVISOR_TOKEN` itself, and `config.yaml`'s `homeassistant_api` / `hassio_api` /
-  `hassio_role: manager` flags grant its reach (see *Where the Supervisor API key comes from* above).
-  Distinguish the two failure modes in the startup self-check lines of the add-on log:
-  - `SUPERVISOR_TOKEN missing` (present before 1.0.20; the s6 base stripped the container env before
-    startup could read it): **update the add-on** — 1.0.20+ keeps the environment intact and recovers
-    the token from the s6 dump.
-  - `token DENIED 401` / `access DENIED 403` (token present but rejected): if the self-check shows
-    `Supervisor API: OK` lines, the key is fine and any remaining denials are the *expected* ones
-    (hassio paths, `supervisor.*` websocket commands, add-on/backup/host management, docker, admin-only endpoints); otherwise update
-    or reinstall the add-on so a fresh token + current permission flags are issued.
-  Never paste a Profile-page long-lived token into any field — it does not work against
-  `http://supervisor`. Note: **updating the add-on re-keys it**; tokens are only valid for the current
-  install.
-- **Memory-server tool errors**: run `crush logs` / check the add-on log — an entry in `mcp_servers` with no reachable URL or no token will say so; 401 = the token on that entry is wrong.
-- **GPU slowness elsewhere**: this add-on never runs models; it talks to your Ollama over the network. Slowness under load usually lives in the Ollama host (shared GPU).
+- **"Choose a model" screen on first launch:** no crushrc was resolved. Check the add-on log for `[addon]` lines, set `ollama_api_key`, or confirm `crush_config_url` is reachable from the HA host.
+- **`Unauthorized` errors in Crush:** the key is stale. Set `ollama_api_key` directly (it wins over everything) and restart.
+- **Model missing from the picker:** confirm `crush_discover_models` is on and restart. For prices, context size or vision metadata, register the model in the crushrc.
+- **`ha` command fails:** test the connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
+- **Supervisor `401` / `403`:** compare with the table under [Home Assistant API access](#home-assistant-api-access); several refusals are expected. If the startup self-check shows `token DENIED` or `SUPERVISOR_TOKEN missing`, update or reinstall the add-on to get a fresh token and current permissions. Updating re-keys the add-on.
+- **MCP tool errors:** the add-on log names any `mcp_servers` entry with an unreachable URL or a missing token. A `401` means that entry's token is wrong.
+- **Slow responses:** the add-on never runs models; slowness usually comes from the Ollama host or provider.
 
 ## Changelog
 
