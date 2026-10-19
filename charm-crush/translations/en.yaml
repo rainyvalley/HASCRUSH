@@ -135,9 +135,9 @@ configuration:
       Small key bar at the bottom of the web terminal, shown on touch devices
       only (desktop browsers keep the full terminal):
       Ctrl, Alt and Tab latch like held keys (the next key pressed composes
-      them, then they release), while Esc, Delete and Paste fire immediately.
+      them, then they release), while Esc, Delete, Copy and Paste fire immediately.
       The bar floats above the on-screen keyboard so it stays reachable while
-      typing. Paste reads the browser clipboard; on a plain-HTTP connection it
+      typing. Copy copies the selection (or opens a text box); Paste reads the browser clipboard; on a plain-HTTP connection it
       falls back to a paste-into-box dialog. Applies on add-on restart.
   touch_bar_offset:
     name: Touch Bar Offset (pixels)

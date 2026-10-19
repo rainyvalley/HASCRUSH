@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.50] - 2026-10-19
+
+### Fixed
+- **Copying text out of the web terminal now works.** ttyd's browser client ignores the OSC 52 clipboard sequence that tmux and Crush send when you copy, so the text was silently dropped. The add-on's page now turns OSC 52 into a real clipboard write, copies a Shift+drag (Option+drag on a Mac) selection on mouse release, and, when the browser refuses a write (plain `http://`, no permission), shows a small "Copy" notice or a selectable text box instead.
+- Option+drag now forces text selection on macOS (it was Shift-only, which does nothing on a Mac).
+- tmux is told explicitly to forward clipboard sequences (`set-clipboard on`, OSC 52 terminal feature).
+
+### Added
+- **`terminal_mouse` option** (default `true`). Set to `false` to make a plain mouse drag select text; the wheel and clicks then stop acting inside Crush.
+- **Copy button** on the touch bar: copies the selection, or opens a selectable box with the visible screen.
+- A "Copy and paste" section in the documentation.
+
+### Changed
+- The clipboard helpers load even when `touch_bar` is off (the page is always served through the add-on's client; the bar itself still follows `touch_bar`).
+
 ## [1.0.49] - 2026-10-19
 
 ### Fixed

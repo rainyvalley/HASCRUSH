@@ -24,7 +24,7 @@ Runs [Charm Crush](https://github.com/charmbracelet/crush), a terminal-based AI 
 - **Persistent sessions.** tmux keeps the session across refreshes and disconnects. Config and keys live in `/homeassistant/.crushdata/` and are included in HA backups.
 - **MCP servers.** Memory, vision, search, CAD or any other MCP server over HTTP or stdio, configured from one Options field. Tokens can be pasted or fetched from a URL.
 - **Central config (optional).** Fetch a shared crushrc from an HTTP URL on every start, so several machines can use one config.
-- **Touch bar (optional).** An on-screen key bar (Ctrl, Alt, Tab, Esc, Del, Paste) for phones and tablets. It only appears on touch devices.
+- **Touch bar (optional).** An on-screen key bar (Ctrl, Alt, Tab, Esc, Del, Copy, Paste) for phones and tablets. It only appears on touch devices.
 - **Home Assistant access.** The `ha` CLI is preinstalled, and `HA_URL` / `HA_TOKEN` are set so Crush can call the Core REST API and the Supervisor API (see [Home Assistant API access](#home-assistant-api-access)).
 - **Optional auto-update.** Crush can update itself on add-on start, with rollback. It is off by default.
 
@@ -62,6 +62,7 @@ Runs [Charm Crush](https://github.com/charmbracelet/crush), a terminal-based AI 
 | `crush_discover_models` | `true` | Add each provider's full model catalog to the picker; off shows only registered models |
 | `mcp_servers` | *(empty)* | All MCP servers as one JSON array (see [MCP servers](#mcp-servers)); empty keeps the template's servers |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal appearance |
+| `terminal_mouse` | `true` | `true`: wheel scrolling and clicks work inside Crush, and you select text with Shift+drag (Option+drag on a Mac). `false`: a plain drag selects text, but the wheel and clicks no longer act inside Crush. Applies on restart |
 | `touch_bar` | `true` | Key bar on touch devices; desktop browsers with a fine pointer get no bar. Applies on restart |
 | `touch_bar_offset` | `0` | Extra px to lift the bar above the on-screen keyboard (-400..400). `0` uses the platform default (-40 on iOS/iPadOS, 0 elsewhere); any other value overrides it |
 | `touch_bar_debug` | `false` | Draw viewport diagnostics above the bar, for phones where it sits wrong |
@@ -209,6 +210,18 @@ Every option has an environment equivalent. Precedence: **real environment > env
 - API keys are stored in the HA config directory, so they appear in HA backups. Protect backups, and rotate keys if one leaves your control.
 - Use a separate bearer token for each service; don't reuse the memory server's token elsewhere.
 
+## Copy and paste
+
+The terminal runs tmux with the mouse on, and Crush also listens to the mouse, so a plain drag is handed to them instead of the browser's text selection.
+
+- **Select text with a modifier-drag.** Hold **Shift** while dragging (Windows, Linux, ChromeOS), or **Option** while dragging on a Mac. The selection is copied to the clipboard when you release the mouse. Or set `terminal_mouse` to `false` and a plain drag selects.
+- **Copy from Crush or tmux.** Selecting text in Crush's own view, or in tmux copy mode (the mouse wheel enters it; `Enter` or `y` copies), sends the text to the browser as an OSC 52 sequence, and the add-on turns it into a clipboard write. If the browser refuses the write (a plain `http://` page, or no permission), a small "Terminal copied N chars" notice appears with a **Copy** button; one tap copies it.
+- **Touch bar Copy.** Copies the current selection; with nothing selected it opens a text box with the visible screen that you can select and copy with the system's own gesture.
+- **Paste.** Use Ctrl+V / Cmd+V, or the bar's **Paste**. Over plain `http://` the bar opens a paste box instead (long-press, Paste, Send).
+- **Older scrollback** lives in tmux, not the browser: scroll with the wheel to enter copy mode, select there, and copy.
+
+The clipboard helpers load with the add-on's web page even when `touch_bar` is off. They need the add-on's Home Assistant page to be served over HTTPS (or `localhost`) for silent clipboard writes; otherwise the Copy notice appears.
+
 ## Troubleshooting
 
 - **"Choose a model" screen on first launch:** no crushrc was resolved. Check the add-on log for `[addon]` lines, set `ollama_api_key`, or confirm `crush_config_url` is reachable from the HA host.
@@ -217,6 +230,7 @@ Every option has an environment equivalent. Precedence: **real environment > env
 - **`ha` command fails:** test the connection with `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`.
 - **Supervisor `401` / `403`:** compare with the table under [Home Assistant API access](#home-assistant-api-access); several refusals are expected. If the startup self-check shows `token DENIED` or `SUPERVISOR_TOKEN missing`, update or reinstall the add-on to get a fresh token and current permissions. Updating re-keys the add-on.
 - **MCP tool errors:** the add-on log names any `mcp_servers` entry with an unreachable URL or a missing token. A `401` means that entry's token is wrong.
+- **Can't copy text from the terminal:** hold Shift (Option on a Mac) while dragging, or see [Copy and paste](#copy-and-paste).
 - **Slow responses:** the add-on never runs models; slowness usually comes from the Ollama host or provider.
 
 ## Changelog
