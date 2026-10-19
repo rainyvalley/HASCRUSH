@@ -111,6 +111,14 @@ configuration:
       The bar floats above the on-screen keyboard so it stays reachable while
       typing. Paste reads the browser clipboard; on a plain-HTTP connection it
       falls back to a paste-into-box dialog. Applies on add-on restart.
+  touch_bar_offset:
+    name: Touch Bar Offset (pixels)
+    description: >-
+      Nudges the touch bar's keyboard lift on phones/browsers that report the
+      keyboard height imprecisely. Negative values lower the bar (use one when
+      a dark band stays between the keys and the keyboard); positive values
+      lift it higher (when the keys hide behind the keyboard). Range -400 to
+      400. Applies on add-on restart.
   working_directory:
     name: Working Directory
     description: >-

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.39] - 2026-10-18
+
+### Fixed
+- **The touch bar sits on the keyboard again.** The keyboard lift combined
+  the page's own viewport change and the panel frame's measurement, which
+  double-counted on phones where both move, leaving a dead band below the
+  keys. It now takes the larger single measurement and subtracts whatever is
+  already covered at rest.
+
+### Added
+- **`Touch Bar Offset` option (pixels, -400..400).** For phones/browsers that
+  report the keyboard height imprecisely: set a negative value (e.g. -260) to
+  lower the bar when a dark band stays under the keys, positive to lift it
+  when the keys hide behind the keyboard. Applies on add-on restart.
+
 ## [1.0.38] - 2026-10-18
 
 ### Changed

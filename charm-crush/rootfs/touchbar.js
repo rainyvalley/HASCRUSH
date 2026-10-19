@@ -20,6 +20,12 @@
 
   var cfg = window.__HASSBAR || {};
   var THEME = cfg.theme === 'light' ? 'light' : 'dark';
+  /* Manual trim for phones/browsers whose reported keyboard inset is off:
+   * positive raises the bar further, negative lowers it. Clamped to what the
+   * add-on option allows. */
+  var OFFSET = parseInt(cfg.offset, 10);
+  if (!isFinite(OFFSET)) OFFSET = 0;
+  OFFSET = Math.max(-400, Math.min(400, OFFSET));
   var BAR_H = 44;
 
   /* Floating pill styling: no full-width backdrop strip - the bar element is
@@ -337,17 +343,18 @@
   /* Keep the bar where the user can actually see it. Two keyboard models:
    *  - top-level page: the keyboard shrinks the VISUAL viewport while the
    *    layout viewport (what position:fixed uses) stays put;
-   *  - HA ingress panel: our page runs in a same-origin IFRAME and the
-   *    keyboard shrinks the PARENT's visual viewport - our own window sees
-   *    nothing, which is why a plain visualViewport check left the bar behind
-   *    the keyboard. Walk the accessible frame chain instead and measure how
-   *    much of each frame's bottom edge is covered.
-   * --hassbar-shift = total covered height; the bar and paste box ride above
-   * it and the terminal shrinks by the same amount, then refits (debounced).
-   * Browsers that resize the layout viewport instead report zero and are
-   * already correct, as is a cross-origin parent (nothing to measure). */
+   *  - HA ingress panel: our page runs in a same-origin IFRAME, and the
+   *    keyboard may shrink the PARENT's visual viewport instead of ours.
+   * Own-window and ancestor-frame coverage describe the SAME keyboard, so
+   * they are combined with max() - summing them double-counts (1.0.38 lifted
+   * the bar far above the keys, leaving a dead band below it). Whatever is
+   * already covered at rest (browser/app chrome, bottom bars, an iframe that
+   * does not end at the page bottom) is subtracted as a baseline, so only the
+   * keyboard's OWN height lifts the bar. */
   var lastShift = -1;
   var fitTimer = null;
+  var restOwn = null;
+  var restAnc = null;
   function coveredBy(win) {
     try {
       var vp = win.visualViewport;
@@ -357,11 +364,11 @@
       return Math.round(s);
     } catch (e) { return 0; }
   }
-  /* How far each ancestor frame's bottom edge sits below the visible area of
-   * its own parent (that is exactly the part of OUR page the keyboard hides,
-   * because our document's bottom edge is that frame's bottom edge). */
+  /* How far the bottom edge of each ancestor frame sits below the visible
+   * area of its parent - that is the part of OUR page hidden from view,
+   * because our document's bottom edge is that frame's bottom edge. */
   function ancestorShift() {
-    var total = 0;
+    var most = 0;
     var w = window;
     try {
       for (var i = 0; i < 5; i++) {
@@ -373,19 +380,27 @@
         if (pv && typeof pv.height === 'number') {
           var r = fe.getBoundingClientRect();
           var hidden = r.bottom - ((pv.offsetTop || 0) + pv.height);
-          if (isFinite(hidden) && hidden > 0) total += Math.round(hidden);
+          if (isFinite(hidden) && hidden > most) most = Math.round(hidden);
         }
         w = p;
       }
     } catch (e) { /* cross-origin ancestor: nothing measurable */ }
-    return total;
-  }
-  function viewportShift() {
-    var s = coveredBy(window) + ancestorShift();
-    return s > 0 ? Math.round(s) : 0;
+    return most;
   }
   function syncViewport() {
-    var shift = viewportShift();
+    var own = coveredBy(window);
+    var anc = ancestorShift();
+    /* Lowest coverage ever seen per source = that source's resting
+     * (keyboard-closed) value: browser/app chrome, bottom bars, an iframe
+     * that does not end at the page bottom. Only the increase over the
+     * baseline is the keyboard. */
+    if (restOwn === null || own < restOwn) restOwn = own;
+    if (restAnc === null || anc < restAnc) restAnc = anc;
+    var base = Math.max(own - restOwn, anc - restAnc);
+    if (!isFinite(base) || base < 16) base = 0; /* ignore jitter */
+    var shift = base + OFFSET;
+    if (shift < 0) shift = 0;
+    shift = Math.round(shift);
     if (shift === lastShift) return;
     lastShift = shift;
     document.documentElement.style.setProperty('--hassbar-shift', shift + 'px');

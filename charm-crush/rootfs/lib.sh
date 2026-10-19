@@ -383,11 +383,12 @@ ttyd_args() {
 # /usr/local/share/) adds Ctrl/Alt/Tab (latching) and Esc/Del/Paste (one-shot)
 # for touch screens, composing latches at the WebSocket send layer.
 #
-# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML
+# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML [OFFSET]
 #   SRC = ttyd's embedded client page (extracted at BUILD time by the
 #         Dockerfile from the pinned binary), BAR_JS = touchbar.js,
 #   THEME = dark|light (mismatching values fall back to dark),
-#   OUT = generated page.
+#   OUT = generated page,
+#   OFFSET = optional integer px added to the keyboard lift (touch_bar_offset).
 # Pure file -> file: no network, no /data. Fails (rc 1) if inputs are missing
 # or unreadable, if SRC already carries this add-on's prelude (never inject
 # twice), or if the spliced output lacks the prelude marker (then OUT is
@@ -400,12 +401,13 @@ touchbar_inject() {
   [ -n "$_ti_bar" ] && [ -r "$_ti_bar" ] || return 1
   [ -n "$_ti_out" ] || return 1
   case "$_ti_theme" in dark|light) ;; *) _ti_theme=dark ;; esac
+  _ti_off=$(touchbar_offset_clamp "${5:-0}")
   grep -q '__HASSBAR' "$_ti_src" 2>/dev/null && return 1
-  awk -v theme="$_ti_theme" '
+  awk -v theme="$_ti_theme" -v off="$_ti_off" '
     NR==FNR { if (NR > 1) bar = bar "\n"; bar = bar $0; next }
     { page = page $0 "\n" }
     END {
-      pre = "<script>window.__HASSBAR={\"theme\":\"" theme "\"};</script>" \
+      pre = "<script>window.__HASSBAR={\"theme\":\"" theme "\",\"offset\":" off "};</script>" \
             "<script>" bar "</script>"
       i = index(page, "</body>")
       if (i == 0) i = index(page, "</html>")
@@ -417,4 +419,26 @@ touchbar_inject() {
     }
   ' "$_ti_bar" "$_ti_src" > "$_ti_out"
   grep -q 'window\.__HASSBAR={"theme"' "$_ti_out" 2>/dev/null || { rm -f "$_ti_out"; return 1; }
+}
+
+# touchbar_offset_clamp VALUE -> prints an integer in [-400, 400].
+# touch_bar_offset nudges the bar against phones/browsers that report a
+# keyboard height we cannot derive exactly (a resting black band under the
+# keys = negative, keys hidden behind the keyboard = positive). Anything not
+# a plain integer (or out of range) becomes 0 / a clamped value - the value is
+# spliced into the generated page, so it must never carry other characters.
+touchbar_offset_clamp() {
+  case "${1:-}" in
+    '') echo 0; return 0 ;;
+    -*) _to_neg=1; _to_n=${1#-} ;;
+    *) _to_neg=0; _to_n=$1 ;;
+  esac
+  case "$_to_n" in
+    ''|*[!0-9]*) echo 0; return 0 ;;
+  esac
+  [ "${#_to_n}" -le 4 ] || { echo 0; return 0; }
+  _to_n=$((10#$_to_n))
+  [ "$_to_n" -le 400 ] || _to_n=400
+  if [ "$_to_n" -eq 0 ]; then echo 0; return 0; fi
+  if [ "$_to_neg" = "1" ]; then echo "-$_to_n"; else echo "$_to_n"; fi
 }

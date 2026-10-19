@@ -777,10 +777,10 @@ if [ "$AUTO_UPDATE" = "true" ]; then
 fi
 
 # ── Web terminal ────────────────────────────────────────────────────────
-# One jq spawn for the five terminal-web options (NUL-delimited, same pattern
+# One jq spawn for the six terminal-web options (NUL-delimited, same pattern
 # as the model-slot read above). touch_bar uses the if-form, not // : jq's //
 # treats an explicit false as unset, and an opt-in toggle must stay falseable.
-mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // 0)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
 FONT_SIZE="${_topts[0]}"
 # FONT_SIZE is spliced into an UNQUOTED -t token, so force it to digits: the
 # jq default only covers a missing key, not a string the operator (or anything
@@ -791,6 +791,7 @@ esac
 THEME="${_topts[1]}"
 SESSION_PERSIST="${_topts[2]}"
 TOUCHBAR="${_topts[4]}"
+TOUCHBAR_OFFSET="${_topts[5]}"
 if [ "$THEME" = "dark" ]; then
   COLORS='background=#1e1e2e,foreground=#cdd6f4,cursor=#f5e0dc'
 else
@@ -829,9 +830,9 @@ fi
 _tb_index=
 if [ "$TOUCHBAR" = "true" ]; then
   if [ -r /usr/local/share/ttyd-index.html ] && [ -r /usr/local/share/touchbar.js ]; then
-    if touchbar_inject /usr/local/share/ttyd-index.html /usr/local/share/touchbar.js "$THEME" /tmp/ttyd-touchbar.html; then
+    if touchbar_inject /usr/local/share/ttyd-index.html /usr/local/share/touchbar.js "$THEME" /tmp/ttyd-touchbar.html "$TOUCHBAR_OFFSET"; then
       _tb_index=/tmp/ttyd-touchbar.html
-      echo "[addon] touch bar on: sticky Ctrl/Alt/Tab, momentary Esc/Del/Paste"
+      echo "[addon] touch bar on: sticky Ctrl/Alt/Tab, momentary Esc/Del/Paste (offset $(touchbar_offset_clamp "$TOUCHBAR_OFFSET") px)"
     else
       echo "[addon][WARN] touch bar page injection failed - starting the plain terminal"
     fi

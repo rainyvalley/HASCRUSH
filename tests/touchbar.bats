@@ -11,7 +11,7 @@ load 'test_helper'
   printf '<html><body>x</body></html>' > "$TMP/src.html"
   printf 'window.__hassbar=1;' > "$TMP/bar.js"
   touchbar_inject "$TMP/src.html" "$TMP/bar.js" dark "$TMP/out.html"
-  grep -q '<script>window.__HASSBAR={"theme":"dark"};</script>' "$TMP/out.html"
+  grep -q '<script>window.__HASSBAR={"theme":"dark","offset":0};</script>' "$TMP/out.html"
   grep -q '<script>window.__hassbar=1;</script>' "$TMP/out.html"
   h=$(grep -bo 'window\.__HASSBAR' "$TMP/out.html" | head -1 | cut -d: -f1)
   b=$(grep -bo '</body>' "$TMP/out.html" | head -1 | cut -d: -f1)
@@ -49,7 +49,7 @@ load 'test_helper'
   printf '<html><body>x</body></html>' > "$TMP/src.html"
   printf 'window.__hassbar=1;' > "$TMP/bar.js"
   touchbar_inject "$TMP/src.html" "$TMP/bar.js" "polka" "$TMP/out.html"
-  grep -q 'window.__HASSBAR={"theme":"dark"}' "$TMP/out.html"
+  grep -q 'window.__HASSBAR={"theme":"dark","offset":0}' "$TMP/out.html"
 
   ! touchbar_inject "$TMP/absent.html" "$TMP/bar.js" dark "$TMP/out2.html" 2>/dev/null
   ! touchbar_inject "$TMP/src.html" "$TMP/absent.js" dark "$TMP/out3.html" 2>/dev/null
@@ -70,4 +70,28 @@ load 'test_helper'
   # appended by the injector and stripped again by command substitution
   tail=$(tail -c "$(( ${#after} + 1 ))" "$TMP/out.html")
   [ "$tail" = "$after" ]
+}
+@test "touchbar_offset_clamp: plain integers pass, junk and out-of-range are tamed" {
+  [ "$(touchbar_offset_clamp 0)" = 0 ]
+  [ "$(touchbar_offset_clamp 260)" = 260 ]
+  [ "$(touchbar_offset_clamp -260)" = -260 ]
+  [ "$(touchbar_offset_clamp 999)" = 400 ]
+  [ "$(touchbar_offset_clamp -999)" = -400 ]
+  [ "$(touchbar_offset_clamp 0042)" = 42 ]
+  [ "$(touchbar_offset_clamp '')" = 0 ]
+  [ "$(touchbar_offset_clamp abc)" = 0 ]
+  [ "$(touchbar_offset_clamp '12x')" = 0 ]
+  [ "$(touchbar_offset_clamp '-')" = 0 ]
+  [ "$(touchbar_offset_clamp '--3')" = 0 ]
+  [ "$(touchbar_offset_clamp '-0')" = 0 ]
+}
+
+@test "touchbar_inject carries the offset into the page prelude" {
+  setup_tmp
+  printf '<html><body>x</body></html>' > "$TMP/src.html"
+  printf 'window.__hassbar=1;' > "$TMP/bar.js"
+  touchbar_inject "$TMP/src.html" "$TMP/bar.js" dark "$TMP/out.html" -260
+  grep -q 'window.__HASSBAR={"theme":"dark","offset":-260}' "$TMP/out.html"
+  touchbar_inject "$TMP/src.html" "$TMP/bar.js" dark "$TMP/out2.html"
+  grep -q 'window.__HASSBAR={"theme":"dark","offset":0}' "$TMP/out2.html"
 }
