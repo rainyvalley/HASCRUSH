@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-10-19
+
+### Fixed
+- **Third-party provider no longer overwrites the saved Ollama key.** With
+  `provider: third_party`, the third-party API key was written into the
+  persisted `ollama.env` as `OLLAMA_API_KEY`, so switching back to Ollama used
+  the wrong key. The persisted Ollama key is now left alone.
+- **The built-in crushrc keeps `=` characters** when reading a key from
+  `ollama.env` (new installs).
+
 ## [1.0.46] - 2026-10-18
 
 ### Changed

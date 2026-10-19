@@ -364,10 +364,10 @@ if [ "$PROVIDER" = "third_party" ]; then
     # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
     # the stray copy of the rc that left next to it
     rm -f "${crushrc}E"
-    # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; we export the
-    # third-party key as OLLAMA_API_KEY below (no sed on key values: they can
-    # contain any character)
-    export OLLAMA_API_KEY="$TP_KEY"
+    # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; the third-party
+    # key is exported as OLLAMA_API_KEY AFTER the Ollama key block below (no
+    # sed on key values: they can contain any character). Exporting it here
+    # would make that block persist the third-party key as the Ollama key.
     echo "[addon] provider=third_party: models remapped to $TPID ($TP_URL)"
   fi
 fi
@@ -442,6 +442,11 @@ else
   rm -f /tmp/key.new   # cover fetch attempts that failed mid-download too
   [ -s "$keyfile" ] && echo "[addon][INFO] using existing persisted ollama key" \
     || echo "[addon][WARN] no ollama API key found (option, key URL, or persisted file)"
+fi
+# third-party provider: the rc's --api-key "$OLLAMA_API_KEY" now carries the
+# third-party key (set only after the persisting block above ran)
+if [ "$TP_ACTIVE" = 1 ]; then
+  export OLLAMA_API_KEY="$TP_KEY"
 fi
 # ── MCP token plumbing (all servers, incl. mem0, via mcp_servers JSON) ──
 # Every token is carried by its OWN mcp_servers entry ("token": or
