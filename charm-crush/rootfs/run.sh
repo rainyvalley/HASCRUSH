@@ -267,7 +267,7 @@ else
 # Key resolution: environment -> addon option -> persisted file.
 # NOTE the classic bug fixed here: `: "${VAR:-cmd}"` does NOT assign!
 [ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(jq -r '.ollama_api_key // ""' /data/options.json 2>/dev/null)"
-[ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -s -d= -f2)"
+[ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -s -d= -f2-)"
 export OLLAMA_API_KEY
 [ -n "$OLLAMA_API_KEY" ] || { echo "ERROR: FAILED - no Ollama API key. Set the add-on option
 or put OLLAMA_API_KEY=... in ~/.config/crush/ollama.env (home is not
