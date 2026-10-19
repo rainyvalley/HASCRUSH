@@ -24,19 +24,38 @@ configuration:
   crush_large_model:
     name: Default (Daily) Model
     description: >-
-      Model registration id used as the daily default (provider/model form).
-      Defaults to ollama-cloud/deepseek-v4.1-flash. The picker in the TUI always
-      shows every model in the config; restart the add-on to refresh choices.
+      Picklist of the models this add-on release knows (registration ids in
+      provider/model form). For anything else - LAN Ollama tags or other
+      catalog ids - use Custom Daily Model below, which wins when set. The
+      in-terminal picker (Ctrl+L, or the Model key on the touch bar) always
+      lists every discovered model; restart the add-on to refresh discovery.
+  crush_large_model_custom:
+    name: Custom Daily Model (overrides)
+    description: >-
+      Optional free-form model id (provider/model). When non-empty it wins
+      over the Default (Daily) Model picklist. Examples:
+      ollama-local/qwen3:14b or ollama-cloud/<model-id>.
   crush_small_model:
     name: Helper (Small) Model
     description: >-
-      Model used for session summaries/titles. Defaults to ollama-cloud/deepseek-v4.1-flash.
+      Model used for session summaries/titles. Picklist; use Custom Helper
+      Model below for ids that are not listed.
+  crush_small_model_custom:
+    name: Custom Helper Model (overrides)
+    description: >-
+      Optional free-form model id; when non-empty it wins over the Helper
+      (Small) Model picklist.
   crush_deep_model:
     name: Deep Reasoning Model
     description: >-
-      Registered as a reasoning model for heavy tasks; switch to it via the
-      TUI model picker. Defaults to ollama-cloud/deepseek-v4.1-flash (the same
-      model as the daily default; set the reasoning effort to max for deep work).
+      Registered as a reasoning model for heavy tasks; switch to it live in
+      the TUI picker (Ctrl+L). Picklist; use Custom Deep Model below for ids
+      that are not listed.
+  crush_deep_model_custom:
+    name: Custom Deep Model (overrides)
+    description: >-
+      Optional free-form model id; when non-empty it wins over the Deep
+      Reasoning Model picklist.
   crush_reasoning_effort:
     name: Reasoning Effort (Daily Model)
     description: >-

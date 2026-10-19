@@ -51,14 +51,14 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `ollama_api_key` | *(empty)* | Ollama Cloud key (direct; wins over key URL) |
 | `ollama_key_url` | *(empty)* | HTTP URL fetching `OLLAMA_API_KEY=...` — validated like `crush_config_url` (http(s), URL-safe chars; plain http warns) |
 | `disti_token` | *(empty)* | Optional **X-Disti-Token download credential** for a crush disti that token-gates its secret files (memory/vision/CAD token copies, ollama.key). When set, every key/token_url fetch sends `X-Disti-Token:`. Token charset is URL-safe validated; fetches run without it if invalid. NOT an MCP bearer token — MCP endpoints keep their own per-endpoint auth and work whether or not the disti is used |
-| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default (registration id) |
-| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) |
-| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | Deep reasoning model (TUI picker); same model as the daily default, run with `crush_reasoning_effort: max` for deep work |
+| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | Daily default - **picklist** of the models this release knows |
+| `crush_large_model_custom` | *(empty)* | Free-form model id that **overrides** the daily picklist when set (e.g. a LAN Ollama tag) |
+| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | Helper model (summaries/titles) - picklist |
 | `crush_reasoning_effort` | `high` | Daily-model thinking effort: `low`/`high`/`max` dropdown |
 | `crush_discover_models` | `true` | Auto-discover each provider's full model catalog (Ollama Cloud, LAN Ollama, third-party) into the TUI picker; disable to show only hand-registered models |
 | `mcp_servers` | *(empty)* | ALL MCP servers (memory/vision/search/etc.) as one JSON array with per-entry tokens (see MCP servers section); empty = template servers as-is |
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
-| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
+| `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
 | `touch_bar_offset` | `0` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. Applies on add-on restart |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
@@ -85,8 +85,8 @@ Env equivalents (same precedence chain as everything else): `THIRD_PARTY_BASE_UR
 ## Models: choose, add, refresh
 
 **Choosing at runtime** — in the TUI:
-1. Type `/` → pick **models** (or press the model-picker key from the help line).
-2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`).
+1. Press **Ctrl+L** (or tap **Model** on the touch bar) → the model picker; `/` → **models** does the same.
+2. The picker lists every model from your config grouped by provider (`ollama-cloud`, `ollama-local`), including the auto-discovered catalog.
 3. `DeepSeek V4.1 Flash` is the default for everything (set `crush_reasoning_effort` to `max` for deep, thinking-heavy tasks; `GLM 5.3 Flash` and `GLM 5.3` stay available in the picker); pick a vision model and drop in an image to inspect it.
 
 **Refreshing the model list** — the picker refreshes on add-on restart. With **Auto-discover All Models** (`crush_discover_models`, default on; `--discover-models true` under the hood) every start re-queries each provider's catalog, so new models appear with no config edit. For anything needing explicit metadata (prices, context window, effort), register it:

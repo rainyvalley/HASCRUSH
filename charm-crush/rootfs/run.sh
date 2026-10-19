@@ -657,13 +657,14 @@ fi
 # leave the config's own slots in place.
 # apply_model_slot moved to rootfs/lib.sh (sourced at the top, unit-tested in
 # tests/); $crushrc below is its global state.
-# One jq spawn for all four slots (NUL-delimited so values - even ones with
-# newlines/quotes - stay intact and land in the right slot; env-wins
-# precedence preserved by the ${VAR:-} wrappers).
-mapfile -d '' -t -- _mopts < <(jq -rj '[(.crush_large_model // ""), (.crush_small_model // ""), (.crush_deep_model // ""), (.crush_reasoning_effort // "")] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
-LARGE_MODEL="${CRUSH_LARGE_MODEL:-${_mopts[0]}}"
-SMALL_MODEL="${CRUSH_SMALL_MODEL:-${_mopts[1]}}"
-DEEP_MODEL="${CRUSH_DEEP_MODEL:-${_mopts[2]}}"
+# One jq spawn for all seven slot fields (NUL-delimited so values - even
+# ones with newlines/quotes - stay intact and land in the right slot; env-wins
+# precedence preserved by the ${VAR:-} wrappers). Each slot is a picklist of
+# known models plus a free-text *_custom override that wins when non-empty.
+mapfile -d '' -t -- _mopts < <(jq -rj '[(.crush_large_model // ""), (.crush_small_model // ""), (.crush_deep_model // ""), (.crush_reasoning_effort // ""), (.crush_large_model_custom // ""), (.crush_small_model_custom // ""), (.crush_deep_model_custom // "")] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+LARGE_MODEL="${CRUSH_LARGE_MODEL:-${_mopts[4]:-${_mopts[0]}}}"
+SMALL_MODEL="${CRUSH_SMALL_MODEL:-${_mopts[5]:-${_mopts[1]}}}"
+DEEP_MODEL="${CRUSH_DEEP_MODEL:-${_mopts[6]:-${_mopts[2]}}}"
 EFFORT="${CRUSH_REASONING_EFFORT:-${_mopts[3]}}"
 if [ "$TP_ACTIVE" = 1 ]; then
   # the option defaults name ollama-cloud/...; follow the remap (lib.sh)

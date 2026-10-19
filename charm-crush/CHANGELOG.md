@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-10-18
+
+### Changed
+- **Model options are picklists instead of text fields.** The daily, helper
+  and deep slots now offer a dropdown of the models this release knows
+  (DeepSeek V4.1 Flash, GLM 5.3 / 5.3 Flash, Kimi K3, Gemma 4 31B, the local
+  Qwen3-VL vision model). For anything else - LAN Ollama tags or other
+  catalog ids - use the new `Custom ... Model` field, which wins when set.
+  **Upgrading with a hand-typed model id:** move it into the matching custom
+  field, otherwise the slot falls back to the dropdown default.
+
+### Added
+- **Model key on the touch bar.** It opens crush's own model picker (Ctrl+L),
+  which lists every model discovered from your providers - the live list,
+  refreshed whenever the add-on restarts.
+
 ## [1.0.39] - 2026-10-18
 
 ### Fixed

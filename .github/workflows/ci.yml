@@ -235,6 +235,7 @@ jobs:
             ' "third_party_base_url":"http://test.invalid:9000/v1",' \
             ' "third_party_api_key":"smoke-key-not-real",' \
             ' "touch_bar":true,' \
+            ' "crush_large_model_custom":"ollama-cloud/glm-5.3",' \
             ' "mcp_servers":[{"name":"mem0","url":"http://test.invalid:8300/mcp","token":"smoke-token-not-real"},' \
             ' {"name":"home-assistant","url":"http://test.invalid:8123/mcp","token":"smoke-ha-token-not-real"},' \
             ' {"name":"relay","command":"socat","args":["STDIO","TCP:192.0.2.5:3010"],"timeout":20}]}' \
@@ -282,6 +283,9 @@ jobs:
             if grep -qF 'smoke-token-not-real' "$work/boot.log"; then fail 'token leaked into the boot log'; fi
             if echo "$crushrc" | grep -qF 'smoke-ha-token-not-real'; then fail 'home-assistant token inlined in crushrc'; fi
             if grep -qF 'smoke-ha-token-not-real' "$work/boot.log"; then fail 'home-assistant token leaked into the boot log'; fi
+            # 3b) model-slot override: the *_custom field beats the picklist
+            if ! echo "$crushrc" | grep -qE '^model large ollama-cloud/glm-5\.3( |$)'; then fail 'model custom override not applied to the large slot'; fi
+
             # 4) touch bar: the custom index page was built from the
             #    build-time-extracted ttyd client page (extraction failures
             #    degrade to a WARN line + plain terminal instead of failing)

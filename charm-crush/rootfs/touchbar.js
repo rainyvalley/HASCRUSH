@@ -157,15 +157,18 @@
   }
   /* Dispatch a real keydown at xterm's hidden textarea; xterm.js evaluates
    * the event exactly like a physical key (keymap + keypad mode + modifiers). */
-  function dispatchKey(key, code) {
+  function dispatchKey(key, code, mods) {
     var el = textareaEl();
     if (!el) return false;
     try {
       if (document.activeElement !== el) el.focus();
     } catch (e) { /* ignore */ }
-    el.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true, cancelable: true, key: key, code: code
-    }));
+    var init = { bubbles: true, cancelable: true, key: key, code: code };
+    if (mods) {
+      if (mods.ctrl) init.ctrlKey = true;
+      if (mods.alt) init.altKey = true;
+    }
+    el.dispatchEvent(new KeyboardEvent('keydown', init));
     return true;
   }
 
@@ -227,13 +230,13 @@
      * above it and the terminal shrinks so no row hides. */
     var css = [
       '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;',
-      'display:flex;align-items:center;justify-content:center;gap:8px;',
+      'display:flex;align-items:center;justify-content:center;gap:6px;',
       'padding:6px 10px calc(6px + env(safe-area-inset-bottom, 0px));',
       'background:transparent;border:0;box-shadow:none;pointer-events:none;',
       'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
       '-webkit-tap-highlight-color:transparent;}',
-      '#hassbar button{pointer-events:auto;flex:0 0 auto;min-width:44px;min-height:32px;',
-      'margin:0;padding:0 13px;border:0;border-radius:999px;',
+      '#hassbar button{pointer-events:auto;flex:0 0 auto;min-width:40px;min-height:32px;',
+      'margin:0;padding:0 10px;border:0;border-radius:999px;',
       'background:' + c.pill + ';color:' + c.fg + ';box-shadow:' + c.shadow + ';',
       '-webkit-backdrop-filter:blur(10px) saturate(140%);backdrop-filter:blur(10px) saturate(140%);',
       "font:600 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;",
@@ -271,7 +274,11 @@
     { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab' },
     { id: 'esc',   label: 'Esc',   sticky: false, key: 'Escape', code: 'Escape' },
     { id: 'del',   label: 'Del',   sticky: false, key: 'Delete', code: 'Delete' },
-    { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' }
+    { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' },
+    /* Ctrl+L opens crush's model picker (its own binding; ctrl+m collides
+     * with Enter) - the live, discovery-fed model list. */
+    { id: 'model', label: 'Model', sticky: false, key: 'l', code: 'KeyL',
+      mods: { ctrl: true } }
   ];
 
   function paint() {
@@ -316,7 +323,7 @@
         }
         /* Esc / Del: one-shot synthetic keydown; any latches compose at the
          * socket layer with the sequence xterm produces. */
-        dispatchKey(b.key, b.code);
+        dispatchKey(b.key, b.code, b.mods);
         paint();
       };
       /* Block focus stealing (clicks must not close the soft keyboard). */
