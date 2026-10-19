@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.41] - 2026-10-18
+
+### Added
+- **`Touch Bar Debug` option.** Draws a one-line diagnostic above the touch
+  bar with the raw numbers behind its keyboard lift (window height, visual
+  viewport, own/ancestor coverage, resting baseline, offset, final shift), so
+  a phone that reports its keyboard inset incorrectly can be diagnosed from a
+  screenshot. Off by default.
+
 ## [1.0.40] - 2026-10-18
 
 ### Changed

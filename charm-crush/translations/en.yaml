@@ -138,6 +138,13 @@ configuration:
       a dark band stays between the keys and the keyboard); positive values
       lift it higher (when the keys hide behind the keyboard). Range -400 to
       400. Applies on add-on restart.
+  touch_bar_debug:
+    name: Touch Bar Debug
+    description: >-
+      Draws a one-line diagnostic above the touch bar showing the raw
+      viewport numbers behind its keyboard lift (window height, visual
+      viewport, own/ancestor coverage, baseline, offset, final shift). Use it
+      to troubleshoot phones where the bar still sits wrong, then turn it off.
   working_directory:
     name: Working Directory
     description: >-

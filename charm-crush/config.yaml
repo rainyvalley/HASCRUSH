@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI assistant inside Home Assistant — all your Ollama (or third-party) models at your fingertips, with optional MCP support for third-party tie-ins
-version: "1.0.40"
+version: "1.0.41"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:
@@ -53,6 +53,7 @@ options:
   terminal_theme: dark
   touch_bar: true
   touch_bar_offset: 0
+  touch_bar_debug: false   # diagnostic line above the bar (viewport numbers)
   working_directory: /homeassistant
   session_persistence: true
   auto_update_crush: false   # default false since 1.0.33 (new installs only; saved values are kept)
@@ -80,6 +81,7 @@ schema:
   terminal_theme: list(dark|light)
   touch_bar: bool
   touch_bar_offset: int(-400,400)
+  touch_bar_debug: bool
   working_directory: str
   session_persistence: bool
   auto_update_crush: bool

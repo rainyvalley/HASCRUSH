@@ -283,8 +283,9 @@ jobs:
             if grep -qF 'smoke-token-not-real' "$work/boot.log"; then fail 'token leaked into the boot log'; fi
             if echo "$crushrc" | grep -qF 'smoke-ha-token-not-real'; then fail 'home-assistant token inlined in crushrc'; fi
             if grep -qF 'smoke-ha-token-not-real' "$work/boot.log"; then fail 'home-assistant token leaked into the boot log'; fi
-            # 3b) model-slot override: the *_custom field beats the picklist
-            if ! echo "$crushrc" | grep -qE '^model large ollama-cloud/glm-5\.3( |$)'; then fail 'model custom override not applied to the large slot'; fi
+            # 3b) model-slot override: the *_custom field beats the picklist,
+            #     and the third-party remap rewrites its provider too
+            if ! echo "$crushrc" | grep -qE '^model large openai-compat-3p/glm-5\.3( |$)'; then fail 'model custom override not applied to the large slot'; fi
 
             # 4) touch bar: the custom index page was built from the
             #    build-time-extracted ttyd client page (extraction failures

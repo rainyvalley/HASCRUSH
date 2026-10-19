@@ -60,6 +60,7 @@ Run [Charm Crush](https://github.com/charmbracelet/crush) — the terminal-first
 | `terminal_font_size` / `terminal_theme` | 14 / dark | Web terminal look |
 | `touch_bar` | `true` | Key bar at the bottom of the web terminal: `Ctrl`/`Alt`/`Tab` latch like held keys (next key composes, then they release), `Esc`/`Del`/`Paste` fire once, and `Model` opens crush's live model picker. Made for phones/tablets; it floats above the on-screen keyboard and is also mouse-clickable. Paste uses the browser clipboard and falls back to a paste-into-box dialog over plain HTTP. Applies on add-on restart |
 | `touch_bar_offset` | `0` | Pixels to nudge the touch bar's keyboard lift (-400..400). Negative lowers the bar when a dark band stays between the keys and the keyboard; positive lifts it when keys hide behind the keyboard. Applies on add-on restart |
+| `touch_bar_debug` | `false` | Draws the touch bar's viewport diagnostics (window/visual viewport, coverage, baseline, offset, shift) as a line above the keys - for troubleshooting phones where the bar sits wrong |
 | `working_directory` | `/homeassistant` | Where crush starts |
 | `session_persistence` | `true` | tmux session survives disconnects |
 | `auto_update_crush` | `false` | Update crush on add-on start (with rollback). Off by default since 1.0.33 for new installs: enabling it downloads the latest upstream crush and runs it as root at every start, verified only against a checksum published in the same release. Installs that already saved this option keep their value |

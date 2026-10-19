@@ -26,6 +26,11 @@
   var OFFSET = parseInt(cfg.offset, 10);
   if (!isFinite(OFFSET)) OFFSET = 0;
   OFFSET = Math.max(-400, Math.min(400, OFFSET));
+  /* Diagnostic overlay (touch_bar_debug): prints the raw viewport numbers
+   * above the bar so a phone/browser that misreports its keyboard inset can
+   * be diagnosed from a screenshot instead of guesswork. */
+  var DEBUG = !!cfg.debug;
+  var diagEl = null;
   var BAR_H = 44;
 
   /* Floating pill styling: no full-width backdrop strip - the bar element is
@@ -408,6 +413,7 @@
     var shift = base + OFFSET;
     if (shift < 0) shift = 0;
     shift = Math.round(shift);
+    if (DEBUG) updateDiag(own, anc, base, shift);
     if (shift === lastShift) return;
     lastShift = shift;
     document.documentElement.style.setProperty('--hassbar-shift', shift + 'px');
@@ -416,6 +422,27 @@
       var t = term();
       if (t && typeof t.fit === 'function') { try { t.fit(); } catch (e) { /* ignore */ } }
     }, 120);
+  }
+  function updateDiag(own, anc, base, shift) {
+    var vp = window.visualViewport || {};
+    var line = 'H' + window.innerHeight +
+      ' vv' + (vp.height === undefined ? '-' : Math.round(vp.height)) +
+      ' top' + Math.round(vp.offsetTop || 0) +
+      ' own' + own + ' anc' + anc +
+      ' rest' + restOwn + '/' + restAnc +
+      ' base' + base + ' off' + OFFSET + ' shift' + shift;
+    window.__hassbar.diag = line;
+    if (!diagEl) {
+      diagEl = document.createElement('div');
+      diagEl.id = 'hassbar-diag';
+      diagEl.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;' +
+        'padding:3px 6px;font:10px/1.35 monospace;color:#f2cdcd;' +
+        'background:rgba(0,0,0,0.72);white-space:nowrap;overflow:hidden;' +
+        'text-overflow:ellipsis;pointer-events:none;';
+      document.body.appendChild(diagEl);
+    }
+    diagEl.style.bottom = 'calc(' + BAR_H + 'px + var(--hassbar-shift, 0px))';
+    diagEl.textContent = 'hassbar ' + line;
   }
   /* Watch the viewport events of our window AND every same-origin ancestor:
    * inside the ingress iframe it is the parent's visual viewport that moves. */

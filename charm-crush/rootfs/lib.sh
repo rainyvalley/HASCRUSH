@@ -383,12 +383,13 @@ ttyd_args() {
 # /usr/local/share/) adds Ctrl/Alt/Tab (latching) and Esc/Del/Paste (one-shot)
 # for touch screens, composing latches at the WebSocket send layer.
 #
-# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML [OFFSET]
+# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML [OFFSET] [DEBUG]
 #   SRC = ttyd's embedded client page (extracted at BUILD time by the
 #         Dockerfile from the pinned binary), BAR_JS = touchbar.js,
 #   THEME = dark|light (mismatching values fall back to dark),
 #   OUT = generated page,
-#   OFFSET = optional integer px added to the keyboard lift (touch_bar_offset).
+#   OFFSET = optional integer px added to the keyboard lift (touch_bar_offset),
+#   DEBUG = "1" draws the viewport diagnostic line (touch_bar_debug).
 # Pure file -> file: no network, no /data. Fails (rc 1) if inputs are missing
 # or unreadable, if SRC already carries this add-on's prelude (never inject
 # twice), or if the spliced output lacks the prelude marker (then OUT is
@@ -402,12 +403,14 @@ touchbar_inject() {
   [ -n "$_ti_out" ] || return 1
   case "$_ti_theme" in dark|light) ;; *) _ti_theme=dark ;; esac
   _ti_off=$(touchbar_offset_clamp "${5:-0}")
+  _ti_dbg=
+  [ "${6:-}" = "1" ] && _ti_dbg=',"debug":1'
   grep -q '__HASSBAR' "$_ti_src" 2>/dev/null && return 1
-  awk -v theme="$_ti_theme" -v off="$_ti_off" '
+  awk -v theme="$_ti_theme" -v off="$_ti_off" -v dbg="$_ti_dbg" '
     NR==FNR { if (NR > 1) bar = bar "\n"; bar = bar $0; next }
     { page = page $0 "\n" }
     END {
-      pre = "<script>window.__HASSBAR={\"theme\":\"" theme "\",\"offset\":" off "};</script>" \
+      pre = "<script>window.__HASSBAR={\"theme\":\"" theme "\",\"offset\":" off dbg "};</script>" \
             "<script>" bar "</script>"
       i = index(page, "</body>")
       if (i == 0) i = index(page, "</html>")
