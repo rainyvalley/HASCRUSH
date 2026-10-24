@@ -9,6 +9,8 @@ the repo root [README.md](../README.md).
 
 - `config.yaml` — add-on definition (options + schema)
 - `Dockerfile`, `rootfs/run.sh` — build + startup
+- `rootfs/lib.sh` — helper functions used by `run.sh` (unit-tested)
+- `rootfs/touchbar.js` — the on-screen key bar and copy/paste helpers for the web terminal
 - `DOCS.md` — full usage documentation
 - `icon.png` / `logo.png` — icons
 - `translations/en.yaml` — options UI labels

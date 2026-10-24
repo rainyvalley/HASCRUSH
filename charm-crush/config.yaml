@@ -1,6 +1,6 @@
 name: HASSCrush
-description: Charm Crush AI assistant inside Home Assistant — all your Ollama (or third-party) models at your fingertips, with optional MCP support for third-party tie-ins
-version: "1.0.50"
+description: Charm Crush AI coding agent in your Home Assistant sidebar. Uses your Ollama or OpenAI-compatible models, with optional MCP tool servers.
+version: "1.0.51"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:

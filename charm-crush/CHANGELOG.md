@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.51] - 2026-10-23
+
+### Fixed
+- **`local_ollama_url` now works.** The option was never read, so the `ollama-local` provider and the local vision model were never added. It is read, checked and used. An invalid URL is ignored with a log line.
+- **Turning `crush_discover_models` back on now works** after it was turned off (the saved config kept `false`).
+- **Command (stdio) MCP arguments with a space or an empty value** no longer break the generated config line. Each argument is quoted; an empty argument skips the entry with a warning.
+- **A bad `mcp_servers` entry no longer deletes the server's existing line.** The old line is replaced only when the new entry is valid.
+- **`crush_reasoning_effort` now changes only the main model.** It used to change the helper model too.
+- The container health check could not notice a dead terminal gate (it matched its own command line). It now checks the gate process.
+- Model ids from the options must be one word (letters, digits and `. _ : / @ + -`). An id containing a space is ignored with a warning.
+
+### Security
+- **The env file only reads known names.** `PATH`, `LD_PRELOAD`, `BASH_ENV` and other names are skipped and logged by name. Values may now contain `= , ~ ?`, spaces inside double quotes, and single-quoted JSON (for `MCP_SERVERS`). A rejected line without `=` is no longer printed.
+- Downloads can no longer be redirected from `https://` to `http://`, and follow at most 2 redirects. Fetches that send `disti_token` do not follow redirects, so the token cannot be sent to another host.
+- Log lines no longer show a URL's `user:password@` or `?query` part.
+- `third_party_base_url` over plain `http://` now logs a warning.
+- `ollama_api_key`, `third_party_api_key` and `disti_token` are hidden in the Configuration form.
+
+### Changed
+- The documentation was rewritten, and statements that did not match the add-on were corrected (the deep model is a picker entry, not a slot; `/config` is the add-on's own folder; the Docker command is installed but has no socket).
+- The add-on description no longer uses marketing wording.
+
 ## [1.0.50] - 2026-10-19
 
 ### Fixed
