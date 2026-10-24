@@ -111,6 +111,8 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 # Precedence: real environment (docker run -e / HA env) > this file > add-on
 # option > central URL > persisted file. Example lines:
 #   OLLAMA_API_KEY=sk-...
+# Allowed names: OLLAMA_API_KEY OLLAMA_KEY_URL LOCAL_OLLAMA_URL DISTI_TOKEN
+# MCP_SERVERS MCP_TOKEN_* THIRD_PARTY_* CRUSH_* (env_name_ok in lib.sh).
 #   MCP_TOKEN_<name>=...  (NOT a token source - mcp_servers entries carry
 #                        their own token/token_url; run.sh exports one of
 #                        these per entry after resolving it. A manually set
@@ -120,24 +122,20 @@ chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 # Missing file = no defaults set; everything still works from options/schema.
 ENV_FILE="$PERSIST_DIR/env"
 if [ -r "$ENV_FILE" ]; then
-  # Only KEY=VALUE and export KEY=VALUE lines are honored - anything else
-  # (shell code, pipes, command substitution) is FILTERED OUT and never runs:
-  # a filtered copy is sourced, not the raw file, so a stray or malicious
-  # line in this file can never execute as code at startup (this runs as
-  # root inside the add-on).
+  # Only KEY=VALUE and export KEY=VALUE lines whose NAME is on the allow-list
+  # (env_name_ok, lib.sh) are honored - anything else (shell code, pipes,
+  # command substitution, LD_PRELOAD, BASH_ENV, PATH ...) is FILTERED OUT and
+  # never runs: a filtered copy is sourced, not the raw file, so a stray or
+  # malicious line in this file can never execute as code at startup (this
+  # runs as root inside the add-on).
   ENV_CLEAN="$PERSIST_DIR/.env.clean.$$"
-  # The value grammar (ENV_PAT) lives in rootfs/lib.sh with its rationale -
-  # sourced above - so the bats suite (tests/) can pin it.
-  grep -E "$ENV_PAT" "$ENV_FILE" > "$ENV_CLEAN" || true
-  BAD=$(grep -vE "$ENV_PAT" "$ENV_FILE" || true)
-  # Blank lines and #-comments are skipped along with the rest, but they are
-  # not actionable - only flag content lines so the boot log stays quiet.
-  BAD=$(printf '%s\n' "$BAD" | grep -vE '^[[:space:]]*(#.*)?$' || true)
+  # The value grammar (ENV_PAT) and the filter (env_file_clean) live in
+  # rootfs/lib.sh with their rationale, so the bats suite (tests/) can pin
+  # them. Values are never printed: a rejected line may carry a real secret.
+  BAD=$(env_file_clean "$ENV_FILE" "$ENV_CLEAN")
   if [ -n "$BAD" ]; then
-    echo "[addon][WARN] $ENV_FILE has non KEY=VALUE lines - they were SKIPPED (not executed):" >&2
-    # Values are ALWAYS masked in the log: a rejected line may still be an
-    # attempted key assignment carrying a real secret.
-    echo "$BAD" | sed 's/=.*/=<masked>/; s/^/    /' >&2
+    echo "[addon][WARN] $ENV_FILE has lines that were SKIPPED (not KEY=VALUE, or a name this add-on does not read) - nothing was executed:" >&2
+    echo "$BAD" | sed 's/^/    /' >&2
   fi
   if [ -s "$ENV_CLEAN" ]; then
     set -a
@@ -148,6 +146,14 @@ if [ -r "$ENV_FILE" ]; then
   fi
   rm -f "$ENV_CLEAN"
 fi
+
+# ── LAN Ollama URL (local_ollama_url option / LOCAL_OLLAMA_URL env) ───────
+# The crushrc is bash run by crush and reads $LOCAL_OLLAMA_URL from the
+# environment, so resolve it here (env > env file > option), validate it, and
+# export it. Invalid = ignored (no ollama-local provider is added).
+LOCAL_OLLAMA_URL="${LOCAL_OLLAMA_URL:-$(jq -r '.local_ollama_url // ""' /data/options.json)}"
+val_check "$LOCAL_OLLAMA_URL" safe_url "local_ollama_url failed charset validation (must be http/https + URL-safe chars) - ignored" || LOCAL_OLLAMA_URL=""
+export LOCAL_OLLAMA_URL
 
 # ── Persistence symlinks ────────────────────────────────────────────────
 # Everything crush writes lives in /homeassistant/.crushdata/ so it survives
@@ -196,8 +202,8 @@ $LIMITS_BODY
 ## Path Mapping
 
 In this add-on container, paths map differently than HA Core:
-- \`/homeassistant\` = HA config directory (equivalent to \`/config\` in HA Core)
-- \`/config\` does NOT exist - always use \`/homeassistant\`
+- \`/homeassistant\` = HA config directory (what HA Core calls \`/config\`)
+- \`/config\` here is this add-on's own private folder, NOT the HA config directory - use \`/homeassistant\` for HA files
 
 When users mention \`/config/...\`, translate to \`/homeassistant/...\`
 
@@ -242,13 +248,14 @@ val_check "$CONFIG_URL" safe_url "crush_config_url failed charset validation (mu
 # is a BASH script crush later executes, so tampered-in-transit content runs
 # in this add-on as root.
 warn_plain_http "crush_config_url uses plain http - the fetched script could be modified in transit on the wire" "$CONFIG_URL"
+curl_guard "$CONFIG_URL"
 # Sanity-check the FULL download, not just the first 2 KB: every line is
 # executable as bash, so validation must cover the whole file. Size-capped
 # at 1 MB (--max-filesize plus an explicit wc -c for chunked/no-length
 # servers) so a runaway/infinitely-fed URL cannot fill the tmpfs.
 CRUSHRC_FETCHED=0
 if [ -n "$CONFIG_URL" ] \
-   && curl -fsSL --retry 2 --retry-delay 2 --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
+   && curl -fsSL "${CURL_GUARD[@]}" --retry 2 --retry-delay 2 --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
    && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ] \
    && grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new \
    && bash -n /tmp/crushrc.new 2>/dev/null \
@@ -258,7 +265,7 @@ if [ -n "$CONFIG_URL" ] \
   mv -f "$crushrc.new" "$crushrc"
   rm -f /tmp/crushrc.new
   CRUSHRC_FETCHED=1
-  echo "[addon] crushrc fetched from the central template: $CONFIG_URL"
+  echo "[addon] crushrc fetched from the central template: $(redact_url "$CONFIG_URL")"
 else
   # Fail closed: a fetch that failed ANY gate (HTTP/size/content/bash-syntax —
   # `bash -n` catches truncated or garbled bytes before they can ever run) is
@@ -290,8 +297,9 @@ provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL" --discove
 fi
 
 # Default = DeepSeek V4.1 Flash with thinking (effort high = model-decided depth).
-# One model for the daily, helper and deep tiers; they differ only in reasoning
-# effort: daily/helper = high, deep = max (set crush_reasoning_effort: max).
+# The same model fills the daily and helper slots. crush_reasoning_effort
+# changes the daily slot only. The "deep" model is registered for the picker
+# but is not a slot.
 model add ollama-cloud/deepseek-v4.1-flash --name "DeepSeek V4.1 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
 model large ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
 model small ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
@@ -335,7 +343,7 @@ chmod 600 "$crushrc" 2>/dev/null || true
 CV_INSTALLED=$(sed -n 's/^# config-version:[[:space:]]*\([0-9]*\).*/\1/p' "$crushrc" 2>/dev/null | head -n 1 || true)
 CV_CENTRAL=""
 if [ -n "$CONFIG_URL" ]; then
-  CV_CENTRAL=$(curl -fsSL --max-time 5 "${CONFIG_URL%/*}/config.version" 2>/dev/null | tr -d '[:space:]' | head -c 16 || true)
+  CV_CENTRAL=$(curl -fsSL "${CURL_GUARD[@]}" --max-time 5 "${CONFIG_URL%/*}/config.version" 2>/dev/null | tr -d '[:space:]' | head -c 16 || true)
   case "$CV_CENTRAL" in *[!0-9]*) CV_CENTRAL="" ;; esac
 fi
 if [ -z "$CONFIG_URL" ]; then
@@ -368,6 +376,7 @@ if [ "$PROVIDER" = "third_party" ]; then
   else
     provider_remap "$TPID" "$TP_URL"
     TP_ACTIVE=1
+    warn_plain_http "third_party_base_url uses plain http - the API key travels unencrypted" "$TP_URL"
     # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
     # the stray copy of the rc that left next to it
     rm -f "${crushrc}E"
@@ -375,7 +384,7 @@ if [ "$PROVIDER" = "third_party" ]; then
     # key is exported as OLLAMA_API_KEY AFTER the Ollama key block below (no
     # sed on key values: they can contain any character). Exporting it here
     # would make that block persist the third-party key as the Ollama key.
-    echo "[addon] provider=third_party: models remapped to $TPID ($TP_URL)"
+    echo "[addon] provider=third_party: models remapped to $TPID ($(redact_url "$TP_URL"))"
   fi
 fi
 
@@ -388,14 +397,19 @@ fi
 DISCOVER_MODELS="${CRUSH_DISCOVER_MODELS:-$(jq -r 'if .crush_discover_models == null then true else .crush_discover_models end' /data/options.json)}"
 case "$DISCOVER_MODELS" in false|0|no) DISCOVER_MODELS=false ;; *) DISCOVER_MODELS=true ;; esac
 if [ "$DISCOVER_MODELS" = false ]; then
-  sed -i 's/--discover-models true/--discover-models false/g' "$crushrc"
+  discover_models_apply false
   echo "[addon] model auto-discovery disabled (crush_discover_models=false) - picker shows only hand-registered models"
 elif [ "$CRUSHRC_FETCHED" != "1" ] \
    && grep -q '^# Built-in fallback crushrc' "$crushrc" 2>/dev/null \
-   && ! grep -q -- '--discover-models true' "$crushrc" 2>/dev/null; then
-  # legacy fallback rc written before discovery: flip it on in place
-  sed -i 's#--api-key "\$OLLAMA_API_KEY"$#& --discover-models true#' "$crushrc" 2>/dev/null
-  sed -i 's#--type ollama --base-url "\$LOCAL_OLLAMA_URL"$#& --discover-models true#' "$crushrc" 2>/dev/null
+   && grep -q -- '--discover-models false' "$crushrc" 2>/dev/null; then
+  # an earlier start with discovery off left `false` in the persisted rc: flip it back
+  discover_models_apply true
+  echo "[addon] model auto-discovery enabled on the existing fallback crushrc"
+elif [ "$CRUSHRC_FETCHED" != "1" ] \
+   && grep -q '^# Built-in fallback crushrc' "$crushrc" 2>/dev/null \
+   && ! grep -q -- '--discover-models' "$crushrc" 2>/dev/null; then
+  # legacy fallback rc written before discovery existed: add the flag in place
+  discover_models_apply true
   echo "[addon] model auto-discovery enabled on the existing fallback crushrc"
 fi
 
@@ -419,7 +433,14 @@ case "$DISTI_TOKEN" in
   *[!A-Za-z0-9._~-]*) echo "[addon][WARN] disti_token failed charset validation (URL-safe chars only) - gated fetches run without it" >&2; DISTI_TOKEN="" ;;
 esac
 DISTI_CURL=()
-[ -n "$DISTI_TOKEN" ] && DISTI_CURL=(-H "X-Disti-Token:${DISTI_TOKEN}")
+# Redirects are followed only when no credential header is sent: curl would
+# repeat X-Disti-Token on the redirected host. With a token set, a redirect
+# simply fails the fetch (the body then never passes the content checks).
+DISTI_LOC=(-L)
+if [ -n "$DISTI_TOKEN" ]; then
+  DISTI_CURL=(-H "X-Disti-Token:${DISTI_TOKEN}")
+  DISTI_LOC=()
+fi
 touch "$keyfile"; chmod 600 "$keyfile"
 if [ -n "$OPT_KEY" ]; then
   # addon option wins; rewrite the key file DELIBERATELY (not sed: keys may
@@ -428,7 +449,7 @@ if [ -n "$OPT_KEY" ]; then
   mv "$keyfile.tmp" "$keyfile"
   chmod 600 "$keyfile"
   echo "[addon][INFO] ollama API key set (env/env-file/option)"
-elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 --max-filesize 65536 "${DISTI_CURL[@]}" "$KEY_URL" -o /tmp/key.new 2>/dev/null \
+elif [ -n "$KEY_URL" ] && curl_guard "$KEY_URL" && curl -fsS "${DISTI_LOC[@]}" "${CURL_GUARD[@]}" --max-time 10 --max-filesize 65536 "${DISTI_CURL[@]}" "$KEY_URL" -o /tmp/key.new 2>/dev/null \
      && grep -q '^OLLAMA_API_KEY=' /tmp/key.new; then
   # pin the fetched file owner-only the moment it exists: between the curl
   # above and the rm below, /tmp/key.new carries the key in the clear
@@ -442,7 +463,7 @@ elif [ -n "$KEY_URL" ] && curl -fsSL --max-time 10 --max-filesize 65536 "${DISTI
     chmod 600 "$keyfile.tmp" 2>/dev/null || true
     mv "$keyfile.tmp" "$keyfile"
     chmod 600 "$keyfile"   # mv REPLACES the file - re-pin owner-only (pre-1.0.27 installs could end up 644 here)
-    echo "[addon][INFO] ollama API key refreshed from $KEY_URL"
+    echo "[addon][INFO] ollama API key refreshed from $(redact_url "$KEY_URL")"
   fi
   rm -f /tmp/key.new   # the fetched key never lingers in /tmp
 else
@@ -471,7 +492,8 @@ mcp_token_fetch() {
   MCP_TOK="$2"
   if [ -z "$MCP_TOK" ] && [ -n "$3" ]; then
     if safe_url "$3"; then
-      MCP_TOK=$(curl -fsSL --max-time 10 --max-filesize 65536 "${DISTI_CURL[@]}" "$3" 2>/dev/null | tr -d '[:space:]' | head -c 4096)
+      curl_guard "$3"
+      MCP_TOK=$(curl -fsS "${DISTI_LOC[@]}" "${CURL_GUARD[@]}" --max-time 10 --max-filesize 65536 "${DISTI_CURL[@]}" "$3" 2>/dev/null | tr -d '[:space:]' | head -c 4096)
       warn_plain_http "mcp_servers '$1': token_url uses plain http - the token travels unencrypted" "$3"
     else
       echo "[addon][WARN] mcp_servers '$1': token_url failed charset validation - not fetched" >&2
@@ -536,7 +558,9 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     # crafted option value can never become code in the crushrc)
     val_check "$MCP_URL" safe_url "mcp_servers '$MCP_NAME': url failed charset validation (http/https + URL-safe chars only) - skipped" || continue
     val_check "$MCP_CMD" safe_text "mcp_servers '$MCP_NAME': command failed charset validation (shell metachars not allowed) - skipped" || continue
-    mcp_remove "$MCP_NAME"
+    # the old server line is replaced only once the whole entry has passed
+    # validation (mcp_remove just before each write below), so a bad entry
+    # never deletes a working line a template registered
     if [ -z "$MCP_URL" ] && [ -z "$MCP_CMD" ]; then
       echo "[addon][WARN] mcp_servers '$MCP_NAME': neither url nor command set - skipped"
       continue
@@ -552,10 +576,12 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
     if [ -n "$MCP_URL" ]; then
       if [ -n "$MCP_TOK" ]; then
         export "${MCP_TOKVAR}=${MCP_TOK}"
+        mcp_remove "$MCP_NAME"
         printf 'mcp add %s --type http --url "%s" --header Authorization "Bearer $%s"\n' "$MCP_NAME" "$MCP_URL" "$MCP_TOKVAR" >> "$crushrc"
       else
         # no token resolves: still wire the server (LAN servers may not need
         # auth) - same posture as mem0's token fetch failure
+        mcp_remove "$MCP_NAME"
         printf 'mcp add %s --type http --url "%s"\n' "$MCP_NAME" "$MCP_URL" >> "$crushrc"
         [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added without auth header"
       fi
@@ -586,8 +612,9 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
       _arg_idx=0
       _mcp_args_ok=1
       while [ "$_arg_idx" -lt "$MCP_NARGS" ]; do
-        # one --args token per element: crush exec's argv directly, no shell
-        # splitting - values may contain spaces/slashes safely. SPACE form is
+        # one double-quoted --args word per element (mcp_arg_fragment, lib.sh):
+        # crush exec's argv directly, so a value with a space stays ONE
+        # argument. SPACE form is
         # required: crush's shell-config flag engine (internal/shellconfig/
         # flags.go, stable v0.88->main) only matches the exact token --args;
         # the =-form dies with "mcp add: unknown flag --args=...". Dash-prefixed
@@ -596,12 +623,12 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         # a paste with an editor line-wrap can embed raw \n/\r inside a
         # value; strip them so the generated rc line never breaks mid-token
         _mcp_arg=${_mf[$((_arg_idx + 7))]//[$'\r\n']/}
-        if ! safe_text "$_mcp_arg"; then
-          echo "[addon][WARN] mcp_servers '$MCP_NAME': arg #$_arg_idx failed charset validation (shell metachars not allowed) - entry skipped" >&2
+        if ! _mcp_frag=$(mcp_arg_fragment "$_mcp_arg"); then
+          echo "[addon][WARN] mcp_servers '$MCP_NAME': arg #$_arg_idx is empty or failed charset validation (shell metachars not allowed) - entry skipped" >&2
           _mcp_args_ok=0
           break
         fi
-        MCP_ARGS_LINE="$MCP_ARGS_LINE --args $_mcp_arg"
+        MCP_ARGS_LINE="$MCP_ARGS_LINE$_mcp_frag"
         MCP_GATE="$MCP_GATE \"$_mcp_arg\""
         _arg_idx=$((_arg_idx + 1))
       done
@@ -627,6 +654,7 @@ if [ "$MCP_JSON_VALID" = 1 ] && [ "$MCP_JSON" != "[]" ]; then
         [ -n "$MCP_TOK_URL" ] && echo "[addon][WARN] mcp_servers '$MCP_NAME': token_url yielded nothing - added WITHOUT the token gate (a gated bridge will close this relay)" >&2
       fi
       [ -n "$MCP_TIMEOUT" ] && MCP_RC="$MCP_RC --timeout $MCP_TIMEOUT"
+      mcp_remove "$MCP_NAME"
       printf '%s\n' "$MCP_RC" >> "$crushrc"
     fi
   done < <(echo "$MCP_JSON" | jq -c '.[]')
@@ -693,14 +721,9 @@ fi
 if [ -n "$EFFORT" ]; then
   case "$EFFORT" in
     low|high|max)
-      # strip existing effort flags from the DAILY slot lines only, then append
-      # the chosen effort (busybox-safe: no backreferences, line-targeted)
-      for _slot in large small; do
-        _line=$(grep -E "^model ${_slot} " "$crushrc" | head -1 || true)
-        [ -n "$_line" ] || continue
-        _clean=$(printf '%s\n' "$_line" | sed "s/[[:space:]]*--reasoning-effort [a-z]*//")
-        sed -i "s#^${_line}\$#${_clean} --reasoning-effort ${EFFORT}#" "$crushrc" 2>/dev/null || true
-      done
+      # the DAILY (large) slot only: the helper (small) slot does titles and
+      # summaries and keeps its own, cheaper effort
+      apply_reasoning_effort large "$EFFORT"
       ;;
     *)
       echo "[addon][WARN] crush_reasoning_effort: '$EFFORT' not low|high|max - ignored"
@@ -741,7 +764,7 @@ if [ "$AUTO_UPDATE" = "true" ]; then
   # crush_<ver>_Linux_<arch>/crush INSIDE the tarball (same as the Dockerfile
   # build path) - the old run.sh queried a flat crush_<ver>_x86_64.tar.gz
   # upstream never published, so this path 404'd and never ran at all.
-  NEW_VER=$(curl -fsSL --max-time 15 https://api.github.com/repos/charmbracelet/crush/releases/latest 2>/dev/null | jq -r .tag_name | tr -d v | head -c 32)
+  NEW_VER=$(curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 15 https://api.github.com/repos/charmbracelet/crush/releases/latest 2>/dev/null | jq -r .tag_name | tr -d v | head -c 32)
   case "$NEW_VER" in
     ""|*[!0-9.]*) NEW_VER="" ;;   # empty/garbage tag: skip, keep the built version
   esac
@@ -750,8 +773,8 @@ if [ "$AUTO_UPDATE" = "true" ]; then
     UPD="crush_${NEW_VER}_Linux_${A}.tar.gz"
     UNPACK="/tmp/crush.unpack.$$"
     if [ -n "$A" ] && command -v sha256sum >/dev/null 2>&1 \
-       && curl -fsSL --max-time 30 --max-filesize 104857600 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/${UPD}" -o /tmp/crush.upd 2>/dev/null \
-       && curl -fsSL --max-time 15 --max-filesize 65536 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/checksums.txt" -o /tmp/crush.chk 2>/dev/null \
+       && curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 30 --max-filesize 104857600 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/${UPD}" -o /tmp/crush.upd 2>/dev/null \
+       && curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 15 --max-filesize 65536 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/checksums.txt" -o /tmp/crush.chk 2>/dev/null \
        && EXPECTED=$(awk -v f="$UPD" '$2 == f {print $1; exit}' /tmp/crush.chk 2>/dev/null) \
        && [ -n "$EXPECTED" ] \
        && [ "$(sha256sum /tmp/crush.upd | cut -d' ' -f1)" = "$EXPECTED" ] \

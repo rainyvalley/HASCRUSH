@@ -165,6 +165,6 @@ WORKDIR /homeassistant
 # ttyd on loopback (with the X-Hass-Source header ttyd requires, else 407) and
 # also checks that the gate process is alive.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -sf -H 'X-Hass-Source: core.ingress' http://127.0.0.1:7682/ >/dev/null && pgrep -f 'TCP4-LISTEN:7681' >/dev/null || exit 1
+    CMD curl -sf -H 'X-Hass-Source: core.ingress' http://127.0.0.1:7682/ >/dev/null && pgrep -f '^socat TCP4-LISTEN:7681' >/dev/null || exit 1
 
 CMD ["/usr/local/bin/run.sh"]

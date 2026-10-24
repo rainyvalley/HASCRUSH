@@ -17,9 +17,13 @@
 #    UNBALANCED trailing quote, which then aborted `.` sourcing under set -e),
 #  - a comment may follow only after real whitespace: `KEY=v#$(cmd)` in an
 #    assignment RHS is NOT a bash comment and would EXECUTE the substitution
-#    when sourced - the old `(#.*)?` alternative let that through.
+#    when sourced - the old `(#.*)?` alternative let that through,
+#  - values may also use `=` `,` `~` `?` (plain assignment text in bash, never
+#    code), spaces inside double quotes, or a single-quoted string with no
+#    `'` in it (bash treats it as fully literal, so JSON for MCP_SERVERS fits).
+#  - the NAME is checked separately by env_name_ok / env_file_clean below.
 # shellcheck disable=SC2034  # ENV_PAT is consumed by run.sh's env-file grep (and tests)
-ENV_PAT='^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=("[A-Za-z0-9_./:@+%-]*"|[A-Za-z0-9_./:@+%-]+)?([[:space:]]+#.*)?$'
+ENV_PAT='^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=("[A-Za-z0-9_./:@+%=,~? -]*"|'"'"'[^'"'"']*'"'"'|[A-Za-z0-9_./:@+%=,~?-]+)?([[:space:]]+#.*)?$'
 # (the trailing ? on the value group also keeps a bare `NAME=` line: empty
 # value = explicitly unset, valid)
 
@@ -56,6 +60,81 @@ safe_text() {
 # guard a value before it is written into the bash-executed crushrc: when $1 is
 # non-empty but fails validator $2, log $3 and return 1; otherwise return 0.
 val_check() { if [ -n "$1" ] && ! "$2" "$1"; then echo "[addon][WARN] $3" >&2; return 1; fi; }
+
+# ── env-file name allow-list + filter ────────────────────────────────────
+# The env file is sourced with `set -a`, so every name it sets is exported to
+# crush and everything crush starts. A free name list would let the file set
+# LD_PRELOAD, BASH_ENV, PATH, IFS, SUPERVISOR_TOKEN, HA_URL ... Only the names
+# this add-on documents are honored; everything else is skipped with a warning.
+env_name_ok() {
+  case "$1" in
+    OLLAMA_API_KEY|OLLAMA_KEY_URL|LOCAL_OLLAMA_URL|DISTI_TOKEN|MCP_SERVERS) return 0 ;;
+    MCP_TOKEN_*|THIRD_PARTY_*|CRUSH_*) return 0 ;;
+  esac
+  return 1
+}
+
+# env_file_clean SRC DST: write the lines of SRC that match ENV_PAT AND set an
+# allowed name to DST (this is what run.sh sources). Every other content line
+# (blank lines and #-comments are ignored) is described on stdout, one line
+# each, with the value never shown: `NAME=<masked>`, or for a line with no `=`
+# only its length (a bare pasted key must not reach the log).
+env_file_clean() {
+  local line trimmed name
+  : > "$2"
+  while IFS= read -r line || [ -n "$line" ]; do
+    trimmed=${line#"${line%%[![:space:]]*}"}
+    case "$trimmed" in ""|"#"*) continue ;; esac
+    if [[ $line =~ $ENV_PAT ]]; then
+      name=$trimmed
+      if [[ $trimmed =~ ^export[[:space:]]+(.*)$ ]]; then name=${BASH_REMATCH[1]}; fi
+      name=${name%%=*}
+      if env_name_ok "$name"; then
+        printf '%s\n' "$line" >> "$2"
+      else
+        printf '%s=<masked> (name not allowed)\n' "$name"
+      fi
+    elif [[ $trimmed == *=* ]]; then
+      printf '%s=<masked>\n' "${trimmed%%=*}"
+    else
+      printf '<%d characters, no "=">\n' "${#trimmed}"
+    fi
+  done < "$1"
+}
+
+# ── log-safe URLs ────────────────────────────────────────────────────────
+# redact_url URL: scheme://host[:port]/path with any user:password@ part and
+# any ?query or #fragment removed (those carry credentials). Log this, never
+# the raw value.
+redact_url() {
+  local u=$1 q="" scheme rest auth
+  case "$u" in *\?*|*\#*) q='?<hidden>' ;; esac
+  u=${u%%\?*}; u=${u%%#*}
+  scheme=${u%%://*}; rest=${u#*://}
+  auth=${rest%%/*}
+  printf '%s://%s%s%s' "$scheme" "${auth##*@}" "${rest#"$auth"}" "$q"
+}
+
+# curl_guard URL: set the CURL_GUARD array for a fetch of URL. A redirect may
+# never leave the URL's own scheme family: an https URL stays on https (no
+# downgrade to http), an http one may move to http or https. At most 2 hops.
+curl_guard() {
+  case "$1" in
+    https://*) CURL_GUARD=(--proto '=https' --proto-redir '=https' --max-redirs 2) ;;
+    *)         CURL_GUARD=(--proto '=http,https' --proto-redir '=http,https' --max-redirs 2) ;;
+  esac
+}
+
+# ── mcp stdio --args fragment ────────────────────────────────────────────
+# mcp_arg_fragment ARG: print ` --args "ARG"` for the generated rc line. The
+# rc is split into words by crush, so the value must be double-quoted to stay
+# ONE argument when it holds a space. Empty or unsafe values return 1 (an
+# empty arg would swallow the next flag). safe_text already forbids `"`.
+mcp_arg_fragment() {
+  [ -n "$1" ] || return 1
+  safe_text "$1" || return 1
+  printf ' --args "%s"' "$1"
+}
 
 # ── CRUSH.md guardrail injection ─────────────────────────────────────────
 # Needs run.sh globals: $CRUSH_MD, $LIMITS_START, $LIMITS_END, $LIMITS_BODY.
@@ -448,4 +527,31 @@ touchbar_offset_clamp() {
   [ "$_to_n" -le 400 ] || _to_n=400
   if [ "$_to_n" -eq 0 ]; then echo 0; return 0; fi
   if [ "$_to_neg" = "1" ]; then echo "-$_to_n"; else echo "$_to_n"; fi
+}
+
+# apply_reasoning_effort SLOT EFFORT: set --reasoning-effort EFFORT on the
+# `model SLOT` line of $crushrc (replacing any earlier value). Only the slot
+# named is touched: run.sh passes `large`, so the cheap helper (`small`) keeps
+# its own effort.
+apply_reasoning_effort() {
+  local slot=$1 effort=$2 line clean
+  line=$(grep -E "^model ${slot} " "$crushrc" | head -1 || true)
+  [ -n "$line" ] || return 0
+  clean=$(printf '%s\n' "$line" | sed "s/[[:space:]]*--reasoning-effort [a-z]*//")
+  sed -i "s#^${line}\$#${clean} --reasoning-effort ${effort}#" "$crushrc" 2>/dev/null || true
+}
+
+# discover_models_apply true|false: flip every `--discover-models` flag in the
+# add-on's own rc. `true` also repairs a legacy fallback rc written before the
+# flag existed (appends it to the provider lines).
+discover_models_apply() {
+  if [ "$1" = false ]; then
+    sed -i 's/--discover-models true/--discover-models false/g' "$crushrc"
+  else
+    sed -i 's/--discover-models false/--discover-models true/g' "$crushrc"
+    if ! grep -q -- '--discover-models true' "$crushrc"; then
+      sed -i 's#--api-key "\$OLLAMA_API_KEY"$#& --discover-models true#' "$crushrc"
+      sed -i 's#--type ollama --base-url "\$LOCAL_OLLAMA_URL"$#& --discover-models true#' "$crushrc"
+    fi
+  fi
 }

@@ -62,7 +62,7 @@ environment:
 schema:
   provider: list(ollama|third_party)
   third_party_base_url: str?
-  third_party_api_key: str?
+  third_party_api_key: password?
   local_ollama_url: str?
   crush_config_url: str?
   crush_large_model: list(ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
@@ -74,9 +74,9 @@ schema:
   crush_reasoning_effort: list(low|high|max)?
   crush_discover_models: bool
   ollama_key_url: str?
-  disti_token: str?
+  disti_token: password?
   mcp_servers: str?
-  ollama_api_key: str?
+  ollama_api_key: password?
   terminal_font_size: int(10,24)
   terminal_theme: list(dark|light)
   terminal_mouse: bool
