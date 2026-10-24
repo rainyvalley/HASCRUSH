@@ -47,6 +47,9 @@
    * above the bar so a phone/browser that misreports its keyboard inset can
    * be diagnosed from a screenshot instead of guesswork. */
   var DEBUG = !!cfg.debug;
+  /* osc52_autocopy option: when off (default) a program in the terminal cannot
+   * change the clipboard by itself; it gets a notice with a Copy button. */
+  var AUTOCOPY = !!cfg.autocopy;
   var diagEl = null;
   var BAR_H = 44;
 
@@ -292,7 +295,7 @@
 
   /* Browser refused a hands-off write: keep the text behind a tap, because a
    * tap is a user gesture and may copy where the OSC 52 arrival could not. */
-  function clipToast(text) {
+  function clipToast(text, asked) {
     removeEl('hassbar-toast');
     var c = COLORS;
     var wrap = document.createElement('div');
@@ -302,7 +305,12 @@
       'background:' + c.card + ';color:' + c.fg + ';border:1px solid ' + c.hair + ';' +
       'box-shadow:' + c.shadow + ';font:600 13px/1.2 system-ui,sans-serif;';
     var label = document.createElement('span');
-    label.textContent = 'Terminal copied ' + text.length + ' chars';
+    if (asked) {
+      label.textContent = 'Terminal wants to copy ' + text.length + ' chars: ' +
+        text.slice(0, 60).replace(/[\u0000-\u001f\u007f]/g, ' ') + (text.length > 60 ? '...' : '');
+    } else {
+      label.textContent = 'Terminal copied ' + text.length + ' chars';
+    }
     var btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = 'Copy';
     var x = document.createElement('button');
@@ -404,7 +412,8 @@
       if (!payload || payload === '?' || payload.length > MAX_CLIP * 1.4) return true;
       var text = b64Utf8(payload);
       if (!text) return true;
-      writeClip(text, function () { clipToast(text); });
+      if (AUTOCOPY) writeClip(text, function () { clipToast(text); });
+      else clipToast(text, true);
     } catch (e) { /* malformed payload: ignore */ }
     return true;
   }

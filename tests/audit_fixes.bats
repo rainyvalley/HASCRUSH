@@ -181,3 +181,24 @@ RC
   apply_model_slot large 'b --base-url http://h.invalid' 2>/dev/null
   grep -qx 'model large ollama-cloud/a' "$crushrc"
 }
+
+# ── OSC 52 opt-in, CI gate, ttyd arch ────────────────────────────────────
+@test "touchbar_inject passes autocopy only when asked" {
+  printf '<html><body>x</body></html>' > "$TMP/src.html"; printf 'b();' > "$TMP/bar.js"
+  touchbar_inject "$TMP/src.html" "$TMP/bar.js" dark "$TMP/o1.html" 0 "" "" ""
+  ! grep -q autocopy "$TMP/o1.html"
+  touchbar_inject "$TMP/src.html" "$TMP/bar.js" dark "$TMP/o2.html" 0 "" "" 1
+  grep -q '"autocopy":1' "$TMP/o2.html"
+}
+
+@test "touchbar.js only writes the clipboard for OSC 52 when autocopy is on" {
+  grep -q 'AUTOCOPY = !!cfg.autocopy' "$REPO/charm-crush/rootfs/touchbar.js"
+  grep -q 'if (AUTOCOPY) writeClip' "$REPO/charm-crush/rootfs/touchbar.js"
+  grep -q '^  osc52_autocopy: false' "$REPO/charm-crush/config.yaml"
+}
+
+@test "Dockerfile fails on an unknown BUILD_ARCH and CI recency gate covers shipped files" {
+  grep -q 'unsupported BUILD_ARCH' "$REPO/charm-crush/Dockerfile"
+  grep -q 'rootfs/touchbar.js' "$REPO/.github/workflows/ci.yml"
+  ! grep -q '^auth_api:' "$REPO/charm-crush/config.yaml"
+}

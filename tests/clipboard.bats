@@ -15,7 +15,7 @@ RUN="$ROOT/rootfs/run.sh"
   grep -q "terminal-overrides.*Ms=" "$TMUXCONF"
   grep -q 'HASSCRUSH_MOUSE.*= off.*set -g mouse off' "$TMUXCONF"
   # the user override file still loads last
-  [ "$(tail -n1 "$TMUXCONF" | cut -c1-17)" = "source-file -q /h" ]
+  [ "$(tail -n1 "$TMUXCONF" | cut -c1-17)" = "source-file -q /c" ]
 }
 
 @test "tmux.conf parses and mouse off applies when HASSCRUSH_MOUSE=off" {

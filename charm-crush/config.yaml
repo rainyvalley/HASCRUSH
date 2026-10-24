@@ -13,7 +13,6 @@ ingress_stream: true
 panel_icon: mdi:alpha-c-box   # bold boxed C (bigger-reading sidebar glyph)
 panel_title: HASSCrush
 homeassistant_api: true
-auth_api: true
 hassio_api: true
 hassio_role: manager   # needed for `ha core check/logs/stats` and `ha supervisor logs`
 # full_access/docker_api intentionally ABSENT (default false); the role stays at
@@ -31,7 +30,9 @@ options:
   third_party_base_url: ""
   third_party_api_key: ""
   local_ollama_url: ""      # e.g. http://<your-ollama-host>:11434/v1
-  crush_config_url: ""   # optional: HTTP URL fetching your crushrc each start
+  crush_config_url: ""   # optional: URL of a shared crushrc, fetched each start (needs crush_config_sha256)
+  crush_config_sha256: ""   # sha256 the fetched crushrc must match
+  crush_config_allow_http: false   # true = accept an http:// crush_config_url
   # Model slots: picklists of the models this repo knows about. Anything else
   # (LAN Ollama tags, other cloud catalog ids) goes in the matching *_custom
   # field, which wins when non-empty. The in-TUI picker (Ctrl+L) always lists
@@ -53,10 +54,13 @@ options:
   terminal_mouse: true   # false = plain drag selects text (tmux mouse off); true keeps wheel/click in the TUI
   touch_bar: true
   touch_bar_offset: 0   # 0 = auto (-40 on iOS/iPadOS, 0 elsewhere); non-zero overrides
+  osc52_autocopy: false   # true = programs in the terminal may set your clipboard without a click
   touch_bar_debug: false   # diagnostic line above the bar (viewport numbers)
   working_directory: /homeassistant
   session_persistence: true
   auto_update_crush: false   # default false since 1.0.33 (new installs only; saved values are kept)
+  crush_update_version: ""   # exact release to install when auto_update_crush is on
+  crush_update_sha256: ""    # sha256 of that release tarball for this CPU
 environment:
   TERM: xterm-256color
 schema:
@@ -65,6 +69,8 @@ schema:
   third_party_api_key: password?
   local_ollama_url: str?
   crush_config_url: str?
+  crush_config_sha256: str?
+  crush_config_allow_http: bool
   crush_large_model: list(ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
   crush_large_model_custom: str?
   crush_small_model: list(ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
@@ -82,7 +88,10 @@ schema:
   terminal_mouse: bool
   touch_bar: bool
   touch_bar_offset: int(-400,400)
+  osc52_autocopy: bool
   touch_bar_debug: bool
   working_directory: str
   session_persistence: bool
   auto_update_crush: bool
+  crush_update_version: str?
+  crush_update_sha256: str?

@@ -496,6 +496,7 @@ touchbar_inject() {
   _ti_dbg=
   [ "${6:-}" = "1" ] && _ti_dbg=',"debug":1'
   [ "${7:-}" = "1" ] && _ti_dbg="$_ti_dbg"',"bar":0'
+  [ "${8:-}" = "1" ] && _ti_dbg="$_ti_dbg"',"autocopy":1'
   grep -q '__HASSBAR' "$_ti_src" 2>/dev/null && return 1
   awk -v theme="$_ti_theme" -v off="$_ti_off" -v dbg="$_ti_dbg" '
     NR==FNR { if (NR > 1) bar = bar "\n"; bar = bar $0; next }
@@ -561,5 +562,56 @@ discover_models_apply() {
       sed -i 's#--api-key "\$OLLAMA_API_KEY"$#& --discover-models true#' "$crushrc"
       sed -i 's#--type ollama --base-url "\$LOCAL_OLLAMA_URL"$#& --discover-models true#' "$crushrc"
     fi
+  fi
+}
+
+# ── pinned hashes and versions ───────────────────────────────────────────
+# is_sha256 VALUE: exactly 64 hex characters (either case).
+is_sha256() { [[ $1 =~ ^[0-9A-Fa-f]{64}$ ]]; }
+
+# file_sha256 FILE: print the lowercase hex SHA-256 of FILE.
+file_sha256() { sha256sum "$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'; }
+
+# sha256_matches FILE EXPECTED: 0 only if EXPECTED is a valid hash equal to
+# FILE's SHA-256 (case-insensitive).
+sha256_matches() {
+  is_sha256 "$2" || return 1
+  [ "$(file_sha256 "$1")" = "$(printf '%s' "$2" | tr 'A-F' 'a-f')" ]
+}
+
+# version_gt A B: 0 when dotted-number version A is strictly newer than B.
+# Both must be digits and dots only; anything else returns 1 (no update).
+version_gt() {
+  local IFS=. a b i x y
+  case "$1$2" in ""|*[!0-9.]*) return 1 ;; esac
+  [ -n "$1" ] && [ -n "$2" ] || return 1
+  read -ra a <<< "$1"; read -ra b <<< "$2"
+  for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+    x=$((10#${a[i]:-0})); y=$((10#${b[i]:-0}))
+    [ "$x" -gt "$y" ] && return 0
+    [ "$x" -lt "$y" ] && return 1
+  done
+  return 1
+}
+
+# ── one-time move of the persisted data ──────────────────────────────────
+# persist_migrate OLD NEW MARKER: before 1.0.51 the add-on kept its data in
+# OLD (inside the shared Home Assistant config folder, which other add-ons
+# can write). It now lives in NEW (the add-on's private folder). The first
+# start copies OLD to NEW without overwriting anything already in NEW,
+# leaves OLD in place, and writes MARKER so it never runs twice. Prints what
+# it did (one line per step) for the add-on log.
+persist_migrate() {
+  local old=$1 new=$2 marker=$3
+  [ -e "$marker" ] && return 0
+  if [ ! -d "$old" ]; then return 0; fi
+  mkdir -p "$new" || { echo "[addon][ERROR] cannot create $new - old data in $old not migrated"; return 1; }
+  if cp -a -n "$old"/. "$new"/ 2>/dev/null; then
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$marker"
+    echo "[addon][NOTICE] data migrated: copied $old to $new (nothing in $new was overwritten)"
+    echo "[addon][NOTICE] the old copy in $old was left in place; delete it once you have checked the new one. It is no longer read."
+  else
+    echo "[addon][ERROR] copy from $old to $new failed - will retry on the next start"
+    return 1
   fi
 }

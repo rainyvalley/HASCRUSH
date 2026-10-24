@@ -16,9 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A bad `mcp_servers` entry no longer deletes the server's existing line.** The old line is replaced only when the new entry is valid.
 - **`crush_reasoning_effort` now changes only the main model.** It used to change the helper model too.
 - The container health check could not notice a dead terminal gate (it matched its own command line). It now checks the gate process.
+- A warning is logged when `provider` is `third_party` and a model slot still names a default Ollama model.
+- `auth_api` was removed (not used). The build now fails on an unknown CPU architecture instead of fetching an x86 ttyd.
 - Model ids from the options must be one word (letters, digits and `. _ : / @ + -`). An id containing a space is ignored with a warning.
 
 ### Security
+- **Your data moved to the add-on's private folder.** The Crush config, env file, tmux.conf, keys, CRUSH.md and session data now live in `/config/crushdata/` instead of `/homeassistant/.crushdata/`, which other add-ons can write. The first start copies the old folder over, leaves the old copy in place, and logs `data migrated`. Delete the old copy when you are happy.
+- **`crush_config_url` now needs `crush_config_sha256`.** The fetched config is a script that runs as root, so it is used only if its SHA-256 matches. `http://` URLs are refused unless you turn on `crush_config_allow_http`. On any failure the last good config is kept. **If you use a central config, set the hash after updating** or the add-on keeps using its saved config.
+- **Auto-update is pinned.** `auto_update_crush` installs only the release in `crush_update_version` whose download matches `crush_update_sha256`, and never a version that is not newer than the built-in one. It no longer asks GitHub for the latest release.
+- **`osc52_autocopy` (default off).** Copying from Crush or tmux now shows a notice with a Copy button instead of changing your clipboard silently. Turn the option on for the old behaviour.
 - **The env file only reads known names.** `PATH`, `LD_PRELOAD`, `BASH_ENV` and other names are skipped and logged by name. Values may now contain `= , ~ ?`, spaces inside double quotes, and single-quoted JSON (for `MCP_SERVERS`). A rejected line without `=` is no longer printed.
 - Downloads can no longer be redirected from `https://` to `http://`, and follow at most 2 redirects. Fetches that send `disti_token` do not follow redirects, so the token cannot be sent to another host.
 - Log lines no longer show a URL's `user:password@` or `?query` part.

@@ -115,7 +115,7 @@ jobs:
           cfg_ts=$(git log -1 --format=%ct -- charm-crush/config.yaml)
           [ -n "$cfg_ts" ] || { echo '::error::config.yaml has no commit - cannot run the recency gate'; exit 1; }
           rc=0
-          for f in charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh charm-crush/Dockerfile; do
+          for f in charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh charm-crush/rootfs/touchbar.js charm-crush/rootfs/root/.tmux.conf charm-crush/rootfs/root/.bashrc charm-crush/apparmor.txt charm-crush/Dockerfile; do
             f_ts=$(git log -1 --format=%ct -- "$f")
             if [ "$f_ts" -gt "$cfg_ts" ]; then
               echo "::error::${f} has a commit NEWER than the last config.yaml commit (the 1.0.28/29 trap: that change is unreachable - the Supervisor sees an unchanged version string and skips the update). Bump config.yaml's version again, or amend/rebase the change before the bump commit if the release has not shipped."
@@ -261,7 +261,7 @@ jobs:
             # terminate the script on the FIRST failed check and skip the rest
             # plus the container cleanup below.
             docker logs boot-smoke 2>&1 | tee "$work/boot.log"
-            crushrc=$(docker exec boot-smoke cat /homeassistant/.crushdata/config/crush/crushrc)
+            crushrc=$(docker exec boot-smoke cat /config/crushdata/config/crush/crushrc)
             fail() { echo "FAIL: $1"; rc=1; }
             # 1) provider remap landed in the generated rc
             if ! echo "$crushrc" | grep -q 'provider add openai-compat-3p'; then fail 'provider not remapped to openai-compat-3p'; fi

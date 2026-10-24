@@ -101,12 +101,18 @@ else
   esac
 fi
 
-PERSIST_DIR=/homeassistant/.crushdata
+# Data lives in the add-on's PRIVATE config folder (addon_config, mounted at
+# /config). It used to live in /homeassistant/.crushdata, which every add-on
+# with write access to the HA config folder can change; persist_migrate
+# (lib.sh) copies that old folder over once and leaves it in place.
+PERSIST_DIR=/config/crushdata
+OLD_PERSIST_DIR=/homeassistant/.crushdata
+persist_migrate "$OLD_PERSIST_DIR" "$PERSIST_DIR" "$PERSIST_DIR/.migrated-from-homeassistant" || true
 mkdir -p "$PERSIST_DIR/config/crush" "$PERSIST_DIR/data" /root/.config /root/.local/share
 chmod 700 "$PERSIST_DIR" 2>/dev/null || true
 
 # ── Optional env-file defaults ─────────────────────────────────────────
-# /homeassistant/.crushdata/env (KEY=VALUE lines) sets DEFAULTS via environment
+# /config/crushdata/env (KEY=VALUE lines) sets DEFAULTS via environment
 # variables — the script's own `VAR=${VAR:-...}` chains honor it everywhere.
 # Precedence: real environment (docker run -e / HA env) > this file > add-on
 # option > central URL > persisted file. Example lines:
@@ -156,7 +162,7 @@ val_check "$LOCAL_OLLAMA_URL" safe_url "local_ollama_url failed charset validati
 export LOCAL_OLLAMA_URL
 
 # ── Persistence symlinks ────────────────────────────────────────────────
-# Everything crush writes lives in /homeassistant/.crushdata/ so it survives
+# Everything crush writes lives in /config/crushdata/ so it survives
 # container restarts, rebuilds and reinstalls (and ships inside HA backups).
 rm -rf /root/.config/crush
 ln -sfn "$PERSIST_DIR/config/crush" /root/.config/crush
@@ -247,33 +253,52 @@ val_check "$CONFIG_URL" safe_url "crush_config_url failed charset validation (mu
 # Plain-HTTP caveat (user decision: http stays allowed): the fetched template
 # is a BASH script crush later executes, so tampered-in-transit content runs
 # in this add-on as root.
-warn_plain_http "crush_config_url uses plain http - the fetched script could be modified in transit on the wire" "$CONFIG_URL"
+# The fetched file is a BASH script that runs as root in this add-on, so it is
+# only used when (1) crush_config_sha256 pins its exact content, and (2) the
+# URL is https:// unless crush_config_allow_http is on. Anything else keeps the
+# config already on disk (the last good copy) and logs why.
+CONFIG_SHA=$(printf '%s' "${CRUSH_CONFIG_SHA256:-$(jq -r '.crush_config_sha256 // ""' /data/options.json)}" | tr -d '[:space:]')
+CONFIG_ALLOW_HTTP="${CRUSH_CONFIG_ALLOW_HTTP:-$(jq -r '.crush_config_allow_http // false' /data/options.json)}"
+case "$CONFIG_ALLOW_HTTP" in true|1|yes) CONFIG_ALLOW_HTTP=true ;; *) CONFIG_ALLOW_HTTP=false ;; esac
 curl_guard "$CONFIG_URL"
 # Sanity-check the FULL download, not just the first 2 KB: every line is
 # executable as bash, so validation must cover the whole file. Size-capped
 # at 1 MB (--max-filesize plus an explicit wc -c for chunked/no-length
 # servers) so a runaway/infinitely-fed URL cannot fill the tmpfs.
 CRUSHRC_FETCHED=0
-if [ -n "$CONFIG_URL" ] \
-   && curl -fsSL "${CURL_GUARD[@]}" --retry 2 --retry-delay 2 --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
-   && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ] \
-   && grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new \
-   && bash -n /tmp/crushrc.new 2>/dev/null \
-   && cp /tmp/crushrc.new "$crushrc.new"; then
-  # /tmp -> persist dir is a cross-filesystem move (copy + unlink, NOT
-  # atomic); stage a copy in the destination dir so the final rename(2) is.
-  mv -f "$crushrc.new" "$crushrc"
-  rm -f /tmp/crushrc.new
-  CRUSHRC_FETCHED=1
-  echo "[addon] crushrc fetched from the central template: $(redact_url "$CONFIG_URL")"
-else
-  # Fail closed: a fetch that failed ANY gate (HTTP/size/content/bash-syntax —
-  # `bash -n` catches truncated or garbled bytes before they can ever run) is
-  # never applied, and the partial file is never left behind in /tmp.
-  rm -f /tmp/crushrc.new "$crushrc.new"
-  if [ -n "$CONFIG_URL" ]; then
-    echo "[addon][WARN] central crushrc fetch failed validation (HTTP/size/content/bash-syntax) - fetched template NOT applied" >&2
+CONFIG_FETCH=0
+if [ -n "$CONFIG_URL" ]; then
+  if [[ "$CONFIG_URL" == http://* ]] && [ "$CONFIG_ALLOW_HTTP" != true ]; then
+    echo "[addon][WARN] crush_config_url is plain http:// and crush_config_allow_http is off - central config NOT fetched (use https://, or turn the option on to accept plain http)" >&2
+  elif ! is_sha256 "$CONFIG_SHA"; then
+    echo "[addon][WARN] crush_config_url is set but crush_config_sha256 is missing or not 64 hex characters - central config NOT fetched. Set it to the sha256 of the file (sha256sum crushrc.template)" >&2
+  else
+    CONFIG_FETCH=1
+    warn_plain_http "crush_config_url uses plain http (allowed by crush_config_allow_http) - the pinned hash still protects the script" "$CONFIG_URL"
   fi
+fi
+if [ "$CONFIG_FETCH" = 1 ]; then
+  if curl -fsSL "${CURL_GUARD[@]}" --retry 2 --retry-delay 2 --max-time 10 --max-filesize 1048576 "$CONFIG_URL" -o /tmp/crushrc.new 2>/dev/null \
+     && [ "$(wc -c < /tmp/crushrc.new)" -le 1048576 ]; then
+    if ! sha256_matches /tmp/crushrc.new "$CONFIG_SHA"; then
+      echo "[addon][WARN] central crushrc HASH MISMATCH: pinned ${CONFIG_SHA,,}, downloaded $(file_sha256 /tmp/crushrc.new) - fetched file REFUSED, keeping the last good config" >&2
+    elif grep -qE '(provider|model) (add|large|small)|crushrc' /tmp/crushrc.new \
+         && bash -n /tmp/crushrc.new 2>/dev/null \
+         && cp /tmp/crushrc.new "$crushrc.new"; then
+      # /tmp -> persist dir is a cross-filesystem move (copy + unlink, NOT
+      # atomic); stage a copy in the destination dir so the final rename(2) is.
+      mv -f "$crushrc.new" "$crushrc"
+      CRUSHRC_FETCHED=1
+      echo "[addon] crushrc fetched from the central template ($(redact_url "$CONFIG_URL")), sha256 matches the pin"
+    else
+      echo "[addon][WARN] central crushrc matched the pinned hash but failed the content or bash-syntax check - NOT applied" >&2
+    fi
+  else
+    echo "[addon][WARN] central crushrc download failed (HTTP/size) - NOT applied, keeping the last good config" >&2
+  fi
+fi
+rm -f /tmp/crushrc.new "$crushrc.new"
+if [ "$CRUSHRC_FETCHED" != 1 ]; then
   if [ ! -f "$crushrc" ]; then
     cat > "$crushrc" <<'RCEOF'
 # Built-in fallback crushrc (add-on). Set crush_config_url to manage centrally.
@@ -324,7 +349,7 @@ RCEOF
       sed -i '/^: "${OLLAMA_API_KEY:?/d' "$crushrc"
       echo "[addon] migrated existing crushrc (key assignment bug fixed)"
     fi
-    echo "[addon] keeping existing crushrc (central template unreachable)"
+    echo "[addon] keeping the existing crushrc (no central config applied)"
   fi
 fi
 # umask 077 covers freshly written files; older installs may still have a
@@ -342,12 +367,12 @@ chmod 600 "$crushrc" 2>/dev/null || true
 # doubles as the base for it (strip the file component).
 CV_INSTALLED=$(sed -n 's/^# config-version:[[:space:]]*\([0-9]*\).*/\1/p' "$crushrc" 2>/dev/null | head -n 1 || true)
 CV_CENTRAL=""
-if [ -n "$CONFIG_URL" ]; then
+if [ "$CONFIG_FETCH" = 1 ]; then
   CV_CENTRAL=$(curl -fsSL "${CURL_GUARD[@]}" --max-time 5 "${CONFIG_URL%/*}/config.version" 2>/dev/null | tr -d '[:space:]' | head -c 16 || true)
   case "$CV_CENTRAL" in *[!0-9]*) CV_CENTRAL="" ;; esac
 fi
-if [ -z "$CONFIG_URL" ]; then
-  echo "[addon] crush_config_url unset - no central config-version to check"
+if [ "$CONFIG_FETCH" != 1 ]; then
+  echo "[addon] central config not in use - no config-version to check"
 elif [ -n "$CV_CENTRAL" ] && [ "$CV_CENTRAL" = "$CV_INSTALLED" ]; then
   echo "[addon] crush config-version ${CV_CENTRAL} - current"
 elif [ -n "$CV_CENTRAL" ] && [ "$CRUSHRC_FETCHED" = "1" ]; then
@@ -706,6 +731,16 @@ if [ "$TP_ACTIVE" = 1 ]; then
   SMALL_MODEL=$(tp_model_id "$SMALL_MODEL" "$TPID")
   DEEP_MODEL=$(tp_model_id "$DEEP_MODEL" "$TPID")
 fi
+if [ "$TP_ACTIVE" = 1 ]; then
+  # the picklist defaults name models that exist on Ollama Cloud, not on the
+  # third-party service
+  for _s in "$LARGE_MODEL" "$SMALL_MODEL"; do
+    case "$_s" in
+      "$TPID"/deepseek-v4.1-flash|"$TPID"/glm-5.3-flash|"$TPID"/glm-5.3|"$TPID"/kimi-k3|"$TPID"/gemma4:31b|ollama-local/*)
+        echo "[addon][WARN] provider=third_party but a model slot is still '$_s', which your service almost certainly does not have - set crush_large_model_custom / crush_small_model_custom to $TPID/<model id>" ;;
+    esac
+  done
+fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
 # deep model: register if not already registered (register_deep_model in lib.sh)
@@ -752,65 +787,66 @@ fi
 # rewritten here: a value the user saved is the Supervisor's to keep.
 AUTO_UPDATE=$(jq -r '.auto_update_crush // false' /data/options.json)
 if [ "$AUTO_UPDATE" = "true" ]; then
-  # The tarball is executed as root the moment it is unpacked, so the archive
-  # is verified against the release's own checksums.txt (exact-second-field
-  # awk match, same pattern as the Dockerfile build path) BEFORE it is
-  # swapped in. NEW_VER is charset-checked [0-9.] before it reaches a URL
-  # (it comes from a GitHub JSON reply, not operator input - but it keys a
-  # URL we curl as root). Rollback restores the built binary from a LOCAL
-  # copy: the old code re-downloaded it over the network, which can fail and
-  # strand a broken binary after the failed upgrade already ran. NB the
-  # release asset is crush_<ver>_Linux_<arch>.tar.gz with the binary at
-  # crush_<ver>_Linux_<arch>/crush INSIDE the tarball (same as the Dockerfile
-  # build path) - the old run.sh queried a flat crush_<ver>_x86_64.tar.gz
-  # upstream never published, so this path 404'd and never ran at all.
-  NEW_VER=$(curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 15 https://api.github.com/repos/charmbracelet/crush/releases/latest 2>/dev/null | jq -r .tag_name | tr -d v | head -c 32)
-  case "$NEW_VER" in
-    ""|*[!0-9.]*) NEW_VER="" ;;   # empty/garbage tag: skip, keep the built version
-  esac
-  if [ -n "$NEW_VER" ] && [ "$NEW_VER" != "$BUILT_NUM" ]; then
+  # The tarball is executed as root the moment it is unpacked, so an update is
+  # only taken when YOU pin it: crush_update_version (one exact release) and
+  # crush_update_sha256 (the sha256 of that release's tarball for this CPU,
+  # from the release's checksums.txt). Nothing is learned from the network
+  # about what to install, and a version that is not newer than the built one
+  # is never installed (no downgrade). Rollback restores the built binary from
+  # a LOCAL copy. NB the release asset is crush_<ver>_Linux_<arch>.tar.gz with
+  # the binary at crush_<ver>_Linux_<arch>/crush INSIDE the tarball (same as
+  # the Dockerfile build path).
+  NEW_VER=$(printf '%s' "${CRUSH_UPDATE_VERSION:-$(jq -r '.crush_update_version // ""' /data/options.json)}" | tr -d 'v[:space:]')
+  UPD_SHA=$(printf '%s' "${CRUSH_UPDATE_SHA256:-$(jq -r '.crush_update_sha256 // ""' /data/options.json)}" | tr -d '[:space:]')
+  case "$NEW_VER" in *[!0-9.]*) NEW_VER="" ;; esac
+  if [ -z "$NEW_VER" ] || ! is_sha256 "$UPD_SHA"; then
+    echo "[addon][WARN] auto_update_crush is on but crush_update_version / crush_update_sha256 are missing or invalid - update SKIPPED, keeping the built-in crush $BUILT_VERSION"
+  elif ! version_gt "$NEW_VER" "$BUILT_NUM"; then
+    echo "[addon] crush_update_version $NEW_VER is not newer than the built-in ${BUILT_NUM:-unknown} - nothing to do (downgrades are refused)"
+  else
     ARCH=$(uname -m); case "$ARCH" in x86_64) A=x86_64;; aarch64) A=arm64;; *) A=;; esac
     UPD="crush_${NEW_VER}_Linux_${A}.tar.gz"
     UNPACK="/tmp/crush.unpack.$$"
     if [ -n "$A" ] && command -v sha256sum >/dev/null 2>&1 \
-       && curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 30 --max-filesize 104857600 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/${UPD}" -o /tmp/crush.upd 2>/dev/null \
-       && curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 15 --max-filesize 65536 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/checksums.txt" -o /tmp/crush.chk 2>/dev/null \
-       && EXPECTED=$(awk -v f="$UPD" '$2 == f {print $1; exit}' /tmp/crush.chk 2>/dev/null) \
-       && [ -n "$EXPECTED" ] \
-       && [ "$(sha256sum /tmp/crush.upd | cut -d' ' -f1)" = "$EXPECTED" ] \
-       && mkdir -p "$UNPACK" \
-       && tar -xzf /tmp/crush.upd -C "$UNPACK" \
-       && [ -f "$UNPACK/crush_${NEW_VER}_Linux_${A}/crush" ]; then
-      cp -p /usr/local/bin/crush /tmp/crush.prev 2>/dev/null || true
-      if cp "$UNPACK/crush_${NEW_VER}_Linux_${A}/crush" /usr/local/bin/crush.new \
-         && chown root:root /usr/local/bin/crush.new 2>/dev/null \
-         && chmod 755 /usr/local/bin/crush.new \
-         && mv -f /usr/local/bin/crush.new /usr/local/bin/crush \
-         && crush --version < /dev/null >/dev/null 2>&1; then
-        echo "[addon] crush updated to $NEW_VER (checksum verified)"
+       && curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 3 --max-time 30 --max-filesize 104857600 "https://github.com/charmbracelet/crush/releases/download/v${NEW_VER}/${UPD}" -o /tmp/crush.upd 2>/dev/null; then
+      if ! sha256_matches /tmp/crush.upd "$UPD_SHA"; then
+        echo "[addon][WARN] crush update $NEW_VER HASH MISMATCH: pinned ${UPD_SHA,,}, downloaded $(file_sha256 /tmp/crush.upd) - REFUSED, keeping the built-in crush"
+        rm -f /tmp/crush.upd
+      elif mkdir -p "$UNPACK" \
+           && tar -xzf /tmp/crush.upd -C "$UNPACK" \
+           && [ -f "$UNPACK/crush_${NEW_VER}_Linux_${A}/crush" ]; then
+        cp -p /usr/local/bin/crush /tmp/crush.prev 2>/dev/null || true
+        if [ -f /tmp/crush.prev ] \
+           && cp "$UNPACK/crush_${NEW_VER}_Linux_${A}/crush" /usr/local/bin/crush.new \
+           && chown root:root /usr/local/bin/crush.new 2>/dev/null \
+           && chmod 755 /usr/local/bin/crush.new \
+           && mv -f /usr/local/bin/crush.new /usr/local/bin/crush \
+           && crush --version < /dev/null >/dev/null 2>&1; then
+          echo "[addon] crush updated to $NEW_VER (sha256 matches the pin)"
+        else
+          echo "[addon][WARN] updated crush fails to run (or no backup could be made) - restoring the built binary from the local backup"
+          cp -p /tmp/crush.prev /usr/local/bin/crush 2>/dev/null || true
+          chmod +x /usr/local/bin/crush 2>/dev/null || true
+          (crush --version < /dev/null >/dev/null 2>&1 \
+            || echo "[addon][ERROR] rollback failed - reinstall the add-on to fix the binary")
+        fi
       else
-        echo "[addon][WARN] updated crush fails to run - restoring the built binary from the local backup"
-        cp -p /tmp/crush.prev /usr/local/bin/crush 2>/dev/null || true
-        chmod +x /usr/local/bin/crush 2>/dev/null || true
-        (crush --version < /dev/null >/dev/null 2>&1 \
-          || echo "[addon][ERROR] rollback failed - reinstall the add-on to fix the binary")
+        echo "[addon][WARN] crush update $NEW_VER: the archive did not contain the expected binary - keeping the built-in crush"
       fi
-      rm -rf "$UNPACK"; rm -f /tmp/crush.upd /tmp/crush.chk /tmp/crush.prev /usr/local/bin/crush.new
     else
-      echo "[addon][WARN] crush update ${BUILT_VERSION} -> ${NEW_VER:-unknown} SKIPPED (download or checksum verification failed) - keeping the built binary"
-      rm -rf "$UNPACK" 2>/dev/null || true; rm -f /tmp/crush.upd /tmp/crush.chk /tmp/crush.prev /usr/local/bin/crush.new
+      echo "[addon][WARN] crush update $NEW_VER download failed (or unsupported CPU) - keeping the built-in crush"
     fi
-  else
-    echo "[addon] crush $BUILT_VERSION is current"
+    rm -rf "$UNPACK" 2>/dev/null || true
+    rm -f /tmp/crush.upd /tmp/crush.chk /tmp/crush.prev /usr/local/bin/crush.new
   fi
-  unset NEW_VER A ARCH UPD UNPACK EXPECTED BUILT_NUM
+  unset NEW_VER UPD_SHA A ARCH UPD UNPACK BUILT_NUM
 fi
 
 # ── Web terminal ────────────────────────────────────────────────────────
 # One jq spawn for the eight terminal-web options (NUL-delimited, same pattern
 # as the model-slot read above). touch_bar uses the if-form, not // : jq's //
 # treats an explicit false as unset, and an opt-in toggle must stay falseable.
-mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // 0), (if .touch_bar_debug == null then false else .touch_bar_debug end), (if .terminal_mouse == null then true else .terminal_mouse end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
+mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // 0), (if .touch_bar_debug == null then false else .touch_bar_debug end), (if .terminal_mouse == null then true else .terminal_mouse end), (if .osc52_autocopy == null then false else .osc52_autocopy end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)
 FONT_SIZE="${_topts[0]}"
 # FONT_SIZE is spliced into an UNQUOTED -t token, so force it to digits: the
 # jq default only covers a missing key, not a string the operator (or anything
@@ -823,6 +859,10 @@ SESSION_PERSIST="${_topts[2]}"
 TOUCHBAR="${_topts[4]}"
 TOUCHBAR_OFFSET="${_topts[5]}"
 TOUCHBAR_DEBUG="${_topts[6]}"
+# osc52_autocopy (default off): may a program in the terminal write the browser
+# clipboard without a click? Off = it gets a notice with a Copy button.
+_tb_auto=
+[ "${CRUSH_OSC52_AUTOCOPY:-${_topts[8]}}" = "true" ] && _tb_auto=1
 # terminal_mouse=false -> tmux `mouse off` (read by .tmux.conf), so a plain drag
 # selects text in the browser; anything but an explicit false keeps mouse on.
 if [ "${_topts[7]}" = "false" ]; then export HASSCRUSH_MOUSE=off; else export HASSCRUSH_MOUSE=on; fi
@@ -870,7 +910,7 @@ if [ -r /usr/local/share/ttyd-index.html ] && [ -r /usr/local/share/touchbar.js 
   [ "$TOUCHBAR_DEBUG" = "true" ] && _tb_dbg=1
   _tb_nobar=
   [ "$TOUCHBAR" = "true" ] || _tb_nobar=1
-  if touchbar_inject /usr/local/share/ttyd-index.html /usr/local/share/touchbar.js "$THEME" /tmp/ttyd-touchbar.html "$TOUCHBAR_OFFSET" "$_tb_dbg" "$_tb_nobar"; then
+  if touchbar_inject /usr/local/share/ttyd-index.html /usr/local/share/touchbar.js "$THEME" /tmp/ttyd-touchbar.html "$TOUCHBAR_OFFSET" "$_tb_dbg" "$_tb_nobar" "$_tb_auto"; then
     _tb_index=/tmp/ttyd-touchbar.html
     if [ "$TOUCHBAR" = "true" ]; then
       echo "[addon] touch bar on: sticky Ctrl/Alt/Tab, momentary Esc/Del/Copy/Paste (offset $(touchbar_offset_clamp "$TOUCHBAR_OFFSET") px); clipboard helpers on"

@@ -58,7 +58,7 @@ ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b72
 RUN case "${BUILD_ARCH}" in \
         amd64) TTYD_ARCH="x86_64"; TTYD_SHA256="${TTYD_SHA256_X86_64}" ;; \
         aarch64) TTYD_ARCH="aarch64"; TTYD_SHA256="${TTYD_SHA256_AARCH64}" ;; \
-        *) TTYD_ARCH="x86_64"; TTYD_SHA256="${TTYD_SHA256_X86_64}" ;; \
+        *) echo "unsupported BUILD_ARCH: ${BUILD_ARCH}" >&2; exit 1 ;; \
     esac && \
     curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
         "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${TTYD_ARCH}" -o /usr/bin/ttyd && \

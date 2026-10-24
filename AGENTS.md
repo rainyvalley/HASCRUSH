@@ -83,14 +83,14 @@ git log --oneline -1 -- charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh char
 
 1. Re-exports `HOME`/`USER`/`SHELL` and `S6_KEEP_ENV=1`. The authoritative `S6_KEEP_ENV=1` lives in the Dockerfile ENV (s6 stage0 reads it before any user code — with it unset, stage0 strips the container env and the Supervisor-injected `SUPERVISOR_TOKEN` never reaches run.sh). run.sh additionally resolves the token from the real env → legacy `HASSIO_TOKEN` → s6 `container_environment` envdirs, and re-exports it as `SUPERVISOR_TOKEN` (the `ha` CLI reads that literal name) plus `HA_TOKEN`.
 2. Supervisor-API self-check: `SUPERVISOR_TOKEN` (injected by HA, never user-set) is re-exported as `HA_TOKEN`; two probe calls print OK/denied into the add-on log.
-3. Sourcing `/homeassistant/.crushdata/env` (optional KEY=VALUE defaults; only allow-listed names, see `env_name_ok` in lib.sh; add a name there and in the README table when a new env var is introduced). The `local_ollama_url` option is resolved and exported as `LOCAL_OLLAMA_URL` right after.
-4. Symlinks `/root/.config/crush` and `/root/.local/share/crush` into `/homeassistant/.crushdata/` for persistence (HA backups include `/homeassistant`).
-5. Writes/patches `/homeassistant/.crushdata/CRUSH.md` — the agent-facing guardrails file crush ingests. Marker-based injection (`<!-- hasscrush-limits-start/end -->`) so user edits survive: never rewrite this file wholesale from run.sh; edit the `LIMITS_BODY` heredoc instead.
-6. crushrc resolution: `crush_config_url` fetch (sanity-checked with grep for `provider|model add`) over a built-in fallback; the crushrc is a **bash script** that resolves `OLLAMA_API_KEY`/`MCP_TOKEN_<name>` from the environment run.sh exports.
+3. Sourcing `/config/crushdata/env` (optional KEY=VALUE defaults; only allow-listed names, see `env_name_ok` in lib.sh; add a name there and in the README table when a new env var is introduced). The `local_ollama_url` option is resolved and exported as `LOCAL_OLLAMA_URL` right after.
+4. Symlinks `/root/.config/crush` and `/root/.local/share/crush` into `/config/crushdata/` for persistence (the add-on's private addon_config mount; HA backups include it; `persist_migrate` copies the pre-1.0.51 `/homeassistant/.crushdata` over once).
+5. Writes/patches `/config/crushdata/CRUSH.md` — the agent-facing guardrails file crush ingests. Marker-based injection (`<!-- hasscrush-limits-start/end -->`) so user edits survive: never rewrite this file wholesale from run.sh; edit the `LIMITS_BODY` heredoc instead.
+6. crushrc resolution: `crush_config_url` fetch (refused unless https or `crush_config_allow_http`, and unless its sha256 equals `crush_config_sha256`; then sanity-checked with grep for `provider|model add` and `bash -n`) over a built-in fallback; the crushrc is a **bash script** that resolves `OLLAMA_API_KEY`/`MCP_TOKEN_<name>` from the environment run.sh exports.
 7. Option overrides applied via sed: provider remap (third-party), model slots, reasoning effort, and the `mcp_servers` JSON merge (one option wires ALL MCP servers, tokens exported as `MCP_TOKEN_<name>` env vars, referenced not inlined).
 8. Optional crush self-update (with rollback), then start the socat ingress gate (port 7681, accepts only the Supervisor ingress address `172.30.32.2`) and `exec ttyd` on loopback `127.0.0.1:7682` serving `tmux new-session -A -s crush`, with `--auth-header X-Hass-Source` kept as defense in depth. The launch argv is built by `ttyd_args`/`ingress_gate_args` in lib.sh (tested in `tests/ttyd_gate.bats`). The secret scan has one documented exception for that Supervisor address.
 
-Key precedence everywhere: **real environment > env file (/homeassistant/.crushdata/env) > Options tab > central URL > persisted file**.
+Key precedence everywhere: **real environment > env file (/config/crushdata/env) > Options tab > central URL > persisted file**.
 
 ## Gotchas
 

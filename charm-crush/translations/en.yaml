@@ -73,10 +73,22 @@ configuration:
   crush_config_url:
     name: Central crushrc Template URL
     description: >-
-      Fetch the Crush config (rc) from a central HTTP template each startup.
-      Points at your config server's crushrc.template; leave empty to use the
-      built-in fallback config. The rc is real Bash - it resolves API keys from
-      the add-on's environment.
+      Fetch the Crush config (rc) from a central template each startup.
+      Needs crush_config_sha256 as well, or the file is not used. Leave empty
+      to use the built-in fallback config. The rc is real Bash and runs as
+      root in the add-on.
+  crush_config_sha256:
+    name: Central crushrc SHA-256
+    description: >-
+      The sha256 (64 hex characters) of the template file at
+      crush_config_url. The file is used only if its hash matches. If it
+      does not, the last good config is kept and the log says so. Change this
+      value whenever you change the template.
+  crush_config_allow_http:
+    name: Allow plain http for the central template
+    description: >-
+      Off by default: crush_config_url must start with https://. Turn on to
+      accept http:// (the pinned hash still has to match).
   ollama_key_url:
     name: Ollama API Key URL
     description: >-
@@ -148,6 +160,13 @@ configuration:
       the automatic choice (-400 to 400): negative lowers the bar when a band
       stays between the keys and the keyboard, positive lifts it when the keys
       hide behind it. Applies on add-on restart.
+  osc52_autocopy:
+    name: Let the terminal set my clipboard
+    description: >-
+      Off by default. When Crush or tmux copies text, a notice with a Copy
+      button appears and nothing changes until you tap it. Turn on to copy
+      silently. Any program that prints to the terminal (for example a file you
+      cat) can then replace your clipboard.
   touch_bar_debug:
     name: Touch Bar Debug
     description: >-
@@ -166,7 +185,19 @@ configuration:
   auto_update_crush:
     name: Auto-update Crush
     description: >-
-      Off by default. When enabled, each add-on start downloads the latest
-      upstream Crush release and runs it as root (checked only against a
-      checksum from the same release; rolled back if the new binary fails its
-      smoke test). Leave off to use the version pinned in the add-on image.
+      Off by default. When on, each start installs the Crush release named in
+      crush_update_version, but only if it is newer than the built-in one and
+      its download matches crush_update_sha256. Rolled back if the new binary
+      fails its smoke test. Leave off to use the version built into the image.
+  crush_update_version:
+    name: Crush version to install
+    description: >-
+      One exact release number, for example 0.98.0. Used only with
+      Auto-update Crush. A version that is not newer than the built-in one is
+      ignored.
+  crush_update_sha256:
+    name: Crush download SHA-256
+    description: >-
+      The sha256 (64 hex characters) of that release's
+      crush_<version>_Linux_<x86_64 or arm64>.tar.gz, from the release's
+      checksums.txt. Used only with Auto-update Crush.

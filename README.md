@@ -71,7 +71,9 @@ A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -`
 | Option | Default | What it does |
 |---|---|---|
 | `mcp_servers` | empty | MCP tool servers as one JSON array. See [MCP servers](#mcp-servers). |
-| `crush_config_url` | empty | A URL of a shared Crush config, fetched at every start. See [Central config](#central-config). |
+| `crush_config_url` | empty | A URL of a shared Crush config, fetched at every start. Needs `crush_config_sha256`. See [Central config](#central-config). |
+| `crush_config_sha256` | empty | The SHA-256 the fetched config must have. |
+| `crush_config_allow_http` | `false` | Allow a `crush_config_url` that starts with `http://`. Off means `https://` only. |
 
 ### Terminal
 
@@ -82,6 +84,7 @@ A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -`
 | `terminal_mouse` | `true` | `true`: the mouse wheel and clicks work inside Crush; select text with Shift+drag (Option+drag on a Mac). `false`: a plain drag selects text. |
 | `touch_bar` | `true` | Show the key bar on touch devices. Desktop browsers do not get it. |
 | `touch_bar_offset` | `0` | Lift the bar above the on-screen keyboard by this many pixels (-400 to 400). `0` picks -40 on iPhone and iPad, 0 elsewhere. |
+| `osc52_autocopy` | `false` | `false`: when Crush or tmux copies text, a notice with a **Copy** button appears and nothing changes until you tap it. `true`: the text is copied silently. |
 | `touch_bar_debug` | `false` | Show a line of numbers above the bar. Turn on only if the bar sits in the wrong place. |
 | `working_directory` | `/homeassistant` | Where Crush starts. Must be under `/homeassistant`, `/config`, `/share`, `/media`, `/ssl` or `/backup`, otherwise `/homeassistant` is used. This only picks the start folder. It does not stop Crush opening other paths. |
 | `session_persistence` | `true` | Keep the session after you disconnect. |
@@ -90,7 +93,11 @@ A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -`
 
 | Option | Default | What it does |
 |---|---|---|
-| `auto_update_crush` | `false` | At each start, if Crush has a newer release than the one built into the add-on, download it. The download is checked against a checksum file from the same release. If the check or the download fails, the built-in Crush is kept. |
+| `auto_update_crush` | `false` | Install the Crush release you name below. Needs both of the next two options. |
+| `crush_update_version` | empty | One exact release, for example `0.98.0`. It is installed only if it is newer than the Crush built into the add-on. Older or equal versions are ignored. |
+| `crush_update_sha256` | empty | The SHA-256 of that release's file `crush_<version>_Linux_<x86_64 or arm64>.tar.gz`, from the release's `checksums.txt`. The download is used only if it matches. |
+
+If a check or download fails, the built-in Crush is kept and the log says why.
 
 ## Providers
 
@@ -114,7 +121,7 @@ Your third-party key is not saved to disk by the add-on.
 
 **Refreshing.** The list is read when the add-on starts. Restart to see new models.
 
-**Adding details** (price, context size, reasoning effort) goes in the Crush config file `/homeassistant/.crushdata/config/crush/crushrc`, or in your central config. Restart afterwards.
+**Adding details** (price, context size, reasoning effort) goes in the Crush config file `/config/crushdata/config/crush/crushrc`, or in your central config. Restart afterwards.
 
 ```bash
 model add ollama-cloud/example-model --name "Example Model" --context-window 1048576 \
@@ -154,13 +161,19 @@ For a memory server, use the same `user_id` in every client that should share on
 
 `crush_config_url` is the address of a Crush config file that several machines can share. It is fetched at every start. Keep keys out of it; it reads them from the environment.
 
+**The file is a shell script that runs as root in the add-on, so you must pin it.**
+
+1. Work out the hash of your template: `sha256sum crushrc.template`.
+2. Put the 64-character result in `crush_config_sha256`.
+3. Change `crush_config_sha256` every time you change the template.
+
 The add-on uses the fetched file only if all of these hold:
 
-- The URL is `http://` or `https://` with plain URL characters. Prefer `https://`. With `http://` the log warns you.
-- The file is 1 MB or less, looks like a Crush config (it has `provider add` or `model add` style lines) and passes `bash -n` (it is a shell script).
-- Otherwise the add-on keeps the config it already has and logs a warning.
+- The URL starts with `https://`. A URL starting with `http://` is refused unless you turn on `crush_config_allow_http`.
+- The file's SHA-256 equals `crush_config_sha256`.
+- The file is 1 MB or less, looks like a Crush config (it has `provider add` or `model add` style lines) and passes `bash -n`.
 
-**The fetched file runs as a script with full add-on rights.** Only point this at a server you control, and over `https://` if you can. The add-on does not check who wrote the file.
+If any check fails, the add-on keeps the config it already has (the last good copy) and logs the reason. A hash mismatch is logged with both hashes.
 
 If the file has a line `# config-version: N` and the same folder serves `config.version`, the log says whether you are current or stale.
 
@@ -181,9 +194,9 @@ You can set options from the environment instead of the Configuration tab. The o
 | `CRUSH_CONFIG_URL` | `crush_config_url` |
 | `MCP_SERVERS` | `mcp_servers` |
 
-The **env file** is `/homeassistant/.crushdata/env`, one `NAME=value` per line. It is read at every start.
+The **env file** is `/config/crushdata/env`, one `NAME=value` per line. It is read at every start. Because of the move in 1.0.51, put it in `/config/crushdata/`, not the old folder.
 
-- Only the names in the table above are read, plus `MCP_TOKEN_*`, `THIRD_PARTY_*` and any other `CRUSH_*`. Other names (for example `PATH` or `LD_PRELOAD`) are skipped and logged by name.
+- Only the names in the table above are read, plus `CRUSH_UPDATE_VERSION` and `CRUSH_UPDATE_SHA256` (they come under `CRUSH_*`), `MCP_TOKEN_*`, `THIRD_PARTY_*` and any other `CRUSH_*`. Other names (for example `PATH` or `LD_PRELOAD`) are skipped and logged by name.
 - A value may use letters, digits and `_ . / : @ + % = , ~ ?`. Wrap a value with spaces in double quotes. For JSON such as `MCP_SERVERS`, wrap it in single quotes and leave out any `'` inside it.
 - Anything else is skipped and logged without showing the value. Nothing from this file is run as a command.
 
@@ -208,28 +221,31 @@ The add-on has the Supervisor **manager** role. Some calls are refused on purpos
 | Admin-only endpoints | 403 | Needs the admin role, which this add-on does not have. |
 | Docker socket | not available | The add-on has no Docker access. (The `docker` command is installed but cannot connect.) |
 
-At each start the log prints OK or `DENIED <code>` for the Supervisor and Core checks. A starter `CRUSH.md` is written once to `/homeassistant/.crushdata/` with these limits so Crush stops retrying refused calls. Your edits to it are kept.
+At each start the log prints OK or `DENIED <code>` for the Supervisor and Core checks. A starter `CRUSH.md` is written once to `/config/crushdata/` with these limits so Crush stops retrying refused calls. Your edits to it are kept.
 
 ## Where files are kept
 
 | Path | What it is |
 |---|---|
-| `/homeassistant/.crushdata/config/crush/crushrc` | The Crush config. |
-| `/homeassistant/.crushdata/config/crush/ollama.env` | The saved Ollama key. |
-| `/homeassistant/.crushdata/CRUSH.md` | Standing instructions for the agent. |
-| `/homeassistant/.crushdata/data/` | Crush session data. |
-| `/homeassistant/.crushdata/env` | Optional env file. |
-| `/homeassistant/.crushdata/tmux.conf` | Your own tmux settings, loaded last. |
+| `/config/crushdata/config/crush/crushrc` | The Crush config. |
+| `/config/crushdata/config/crush/ollama.env` | The saved Ollama key. |
+| `/config/crushdata/CRUSH.md` | Standing instructions for the agent. |
+| `/config/crushdata/data/` | Crush session data. |
+| `/config/crushdata/env` | Optional env file. |
+| `/config/crushdata/tmux.conf` | Your own tmux settings, loaded last. |
 
-These are in your Home Assistant config folder, so they are in HA backups.
+`/config` inside the add-on is the add-on's own private folder. Home Assistant shows it as `/addon_configs/<id>_charm-crush` in the File editor or Samba add-ons. It is included in HA backups. Other add-ons cannot write to it.
+
+**Moved in 1.0.51.** Older versions kept these files in `/homeassistant/.crushdata/`. On the first start after updating, the add-on copies that folder to `/config/crushdata/`, leaves the old copy where it is, and logs what it did (`data migrated`). It never overwrites a file already in the new place and does not copy again. The old copy is no longer read. Delete it once you have checked the new one. Edit your env file, crushrc and tmux.conf in the new place from now on.
 
 ## Security notes
 
 - The terminal is a live root shell inside the add-on. It is reachable only through Home Assistant's ingress, so your HA login is the lock. It listens on loopback behind a small gate that accepts only the ingress proxy.
 - **Crush holds a manager-level Home Assistant token and any MCP tokens in its environment.** Anything Crush runs can read them. Treat prompts, web pages and files you give it as able to ask for them.
 - The add-on can read and write your whole HA config folder, and read `/ssl` and `/backup`. That includes secrets and backups.
-- **Other add-ons that can write your HA config folder can change `/homeassistant/.crushdata/`** (the Crush config, `env` and `tmux.conf`), and that code runs as root here. Only install add-ons you trust that have this access.
-- Keys are saved under `/homeassistant/.crushdata/`, so they are in HA backups. Protect backups and rotate a key if one leaks.
+- The central config and Crush updates are used only when they match a hash you set yourself.
+- The Crush config, `env` and `tmux.conf` run as root here. They live in the add-on's private `/config` folder, which other add-ons cannot write. (Before 1.0.51 they were in the shared HA config folder.)
+- Keys are saved under `/config/crushdata/`, so they are in HA backups. Protect backups and rotate a key if one leaks.
 - Keys and the `disti_token` are hidden in the Configuration form. `mcp_servers` is not, so use `token_url` there.
 - Log lines show a URL without any `user:password@` part or `?query`.
 - The add-on has a custom AppArmor profile, no `full_access`, no Docker API and no host networking. Toggling **Protection mode** for this one add-on is the way out if a task needs more reach.
@@ -240,7 +256,7 @@ These are in your Home Assistant config folder, so they are in HA backups.
 Tmux and Crush both take the mouse, so a plain drag does not select text in the browser.
 
 - **Select with a modifier.** Hold **Shift** (Option on a Mac) while dragging. The selection is copied when you let go. Or set `terminal_mouse` to `false`.
-- **Copy from Crush or tmux.** Text copied inside Crush, or in tmux copy mode (scroll with the wheel; `Enter` or `y` copies), goes to your browser clipboard. Any program that prints the right escape sequence to the terminal can do this too, so text you `cat` from an untrusted file can replace your clipboard. If the browser refuses (plain `http://`, or no permission), a "Copy" notice appears; one tap copies.
+- **Copy from Crush or tmux.** Text copied inside Crush, or in tmux copy mode (scroll with the wheel; `Enter` or `y` copies), goes to your browser clipboard. By default a notice shows what would be copied, with a **Copy** button, and your clipboard changes only when you tap it. Set `osc52_autocopy` to `true` to copy silently. Then any program that prints the right escape sequence to the terminal, for example a file you `cat`, can replace your clipboard. If the browser refuses a silent copy (plain `http://`, or no permission), the same notice appears.
 - **Touch bar Copy.** Copies the selection. With nothing selected it opens a box with the visible screen to copy from.
 - **Paste.** Ctrl+V or Cmd+V, or the bar's **Paste**. Over plain `http://` the bar opens a paste box instead (long-press, Paste, Send).
 - **Older output** is in tmux, not the browser. Scroll with the wheel to enter copy mode.
@@ -256,6 +272,9 @@ The copy helpers load even when `touch_bar` is off. Silent copying needs the pag
 | `local_ollama_url` set, but no local models | The URL was rejected or the server is unreachable. | Look for `local_ollama_url failed charset validation` in the log. Use `http://host:11434/v1`. |
 | A model is missing from the picker | Discovery is off or the list is old. | Turn on `crush_discover_models` and restart. For prices or limits, add a `model add` line. |
 | Log says `has lines that were SKIPPED` | The env file has a line the add-on will not read. | Check the name against [the list](#environment-variables-and-the-env-file) and the value rules. |
+| Log says `central config NOT fetched` or `HASH MISMATCH` | `crush_config_url` is `http://`, `crush_config_sha256` is missing, or the file changed. | Fix the option, or update `crush_config_sha256` to the new file's hash. The last good config stays in use. |
+| Log says `auto_update_crush is on but ... missing` | The update needs a version and a hash. | Set `crush_update_version` and `crush_update_sha256`, or turn the update off. |
+| Log says `data migrated` | First start after updating to 1.0.51. | Check the new folder, then delete the old `/homeassistant/.crushdata`. |
 | Log says `mcp_servers ... skipped` | That entry has a bad name, URL, argument or timeout. | Fix the entry named in the log. |
 | A `401` from an MCP tool | That entry's token is wrong. | Fix the token or `token_url`. |
 | `ha` fails | The token or API is not reachable. | Run `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`. |
