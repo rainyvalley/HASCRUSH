@@ -6,7 +6,7 @@ LABEL maintainer="rainyvalley"
 LABEL org.opencontainers.image.title="HASSCrush — Crush for Home Assistant"
 LABEL org.opencontainers.image.description="Charm Crush CLI with web terminal, your own Ollama (or third-party) models, and optional MCP tie-ins"
 LABEL org.opencontainers.image.source="https://github.com/rainyvalley/HASCRUSH"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="BSD-2-Clause"
 
 # S6_KEEP_ENV=1 must be set at image level: s6-overlay stage0 reads it BEFORE
 # any user code runs, and without it the container environment (including the
