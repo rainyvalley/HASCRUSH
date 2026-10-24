@@ -710,8 +710,8 @@ apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
 # deep model: register if not already registered (register_deep_model in lib.sh)
 if [ -n "$DEEP_MODEL" ]; then
-  if ! safe_text "$DEEP_MODEL"; then
-    echo "[addon][WARN] crush_deep_model failed charset validation (shell metachars not allowed) - deep model not registered" >&2
+  if ! safe_model_id "$DEEP_MODEL"; then
+    echo "[addon][WARN] crush_deep_model failed charset validation (letters, digits and . _ : / @ + - only) - deep model not registered" >&2
     DEEP_MODEL=""
   else
     register_deep_model "$DEEP_MODEL"

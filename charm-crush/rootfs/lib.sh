@@ -57,6 +57,14 @@ safe_text() {
   esac
   return 0
 }
+# safe_model_id: model ids are ONE word in the rc (`model large <id>`), so no
+# spaces: an id like `x --base-url http://evil` would otherwise add flags.
+safe_model_id() {
+  case "$1" in
+    ""|*[!A-Za-z0-9._:/@+-]*) return 1 ;;
+  esac
+  return 0
+}
 # guard a value before it is written into the bash-executed crushrc: when $1 is
 # non-empty but fails validator $2, log $3 and return 1; otherwise return 0.
 val_check() { if [ -n "$1" ] && ! "$2" "$1"; then echo "[addon][WARN] $3" >&2; return 1; fi; }
@@ -334,8 +342,8 @@ apply_model_slot() {
   # $1 = slot (large|small), $2 = chosen model id ("" = keep config's choice).
   # Replaces ONLY the model id, preserving any trailing flags (effort etc.).
   [ -n "$2" ] || return 0
-  if ! safe_text "$2"; then
-    echo "[addon][WARN] crush_${1}_model failed charset validation (shell metachars not allowed) - slot left unchanged" >&2
+  if ! safe_model_id "$2"; then
+    echo "[addon][WARN] crush_${1}_model failed charset validation (letters, digits and . _ : / @ + - only) - slot left unchanged" >&2
     return 0
   fi
   if grep -qE "^model $1 " "$crushrc" 2>/dev/null; then

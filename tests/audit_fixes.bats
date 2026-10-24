@@ -167,3 +167,17 @@ RC
   validated=$(grep -n 'neither url nor command set' "$REPO/charm-crush/rootfs/run.sh" | head -1 | cut -d: -f1)
   [ "$first" -gt "$validated" ]
 }
+
+# ── model ids are one word ───────────────────────────────────────────────
+@test "safe_model_id rejects spaces and flag injection, keeps real ids" {
+  safe_model_id 'ollama-cloud/gemma4:31b'
+  safe_model_id 'openai-compat-3p/meta-llama/llama-3.1-8b:free'
+  ! safe_model_id 'x --base-url http://h.invalid'
+  ! safe_model_id ''
+}
+
+@test "apply_model_slot refuses an id with a space and leaves the slot alone" {
+  printf 'model large ollama-cloud/a\n' > "$crushrc"
+  apply_model_slot large 'b --base-url http://h.invalid' 2>/dev/null
+  grep -qx 'model large ollama-cloud/a' "$crushrc"
+}
