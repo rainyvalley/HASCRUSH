@@ -321,15 +321,16 @@ if [ -n "$LOCAL_OLLAMA_URL" ]; then
 provider add ollama-local --type ollama --base-url "$LOCAL_OLLAMA_URL" --discover-models true
 fi
 
-# Default = DeepSeek V4.1 Flash with thinking (effort high = model-decided depth).
-# The same model fills the daily and helper slots. crush_reasoning_effort
-# changes the daily slot only. The "deep" model is registered for the picker
-# but is not a slot.
-model add ollama-cloud/deepseek-v4.1-flash --name "DeepSeek V4.1 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
-model large ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
-model small ollama-cloud/deepseek-v4.1-flash --reasoning-effort high
+# Default = DeepSeek V4.1 Flash (the :1017 build ollama.com serves) with
+# thinking (effort high = model-decided depth). The same model fills the daily
+# and helper slots. crush_reasoning_effort changes the daily slot only. The
+# "deep" model is registered for the picker but is not a slot.
+model add ollama-cloud/deepseek-v4.1-flash:1017 --name "DeepSeek V4.1 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
+model large ollama-cloud/deepseek-v4.1-flash:1017 --reasoning-effort high
+model small ollama-cloud/deepseek-v4.1-flash:1017 --reasoning-effort high
 
 # Former defaults, still registered as picker alternatives (pick them via / in the TUI):
+model add ollama-cloud/deepseek-v4.1-flash --name "DeepSeek V4.1 Flash (untagged)" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
 model add ollama-cloud/glm-5.3 --name "GLM 5.3" --context-window 1000000 --default-max-tokens 128000 --can-reason true --reasoning-effort max --price-input 1.4 --price-output 4.4
 
@@ -736,10 +737,64 @@ if [ "$TP_ACTIVE" = 1 ]; then
   # third-party service
   for _s in "$LARGE_MODEL" "$SMALL_MODEL"; do
     case "$_s" in
-      "$TPID"/deepseek-v4.1-flash|"$TPID"/glm-5.3-flash|"$TPID"/glm-5.3|"$TPID"/kimi-k3|"$TPID"/gemma4:31b|ollama-local/*)
+      "$TPID"/deepseek-v4.1-flash:1017|"$TPID"/deepseek-v4.1-flash|"$TPID"/glm-5.3-flash|"$TPID"/glm-5.3|"$TPID"/kimi-k3|"$TPID"/gemma4:31b|ollama-local/*)
         echo "[addon][WARN] provider=third_party but a model slot is still '$_s', which your service almost certainly does not have - set crush_large_model_custom / crush_small_model_custom to $TPID/<model id>" ;;
     esac
   done
+fi
+# ── one-time default-model override (2026-11) ───────────────────────────
+# The default moved to ollama-cloud/deepseek-v4.1-flash:1017. /data/options.json
+# is the Supervisor's snapshot of the saved options and is rewritten on every
+# start, so a stale saved pick cannot be edited in place. run.sh records what
+# each slot said when the override was first applied and keeps forcing the new
+# default while the saved value is still that recorded one; a later deliberate
+# choice in the HA UI matches neither, so that slot is released and respected.
+# See model_default_action() in lib.sh. Slots set through CRUSH_* env are a
+# per-run operator choice and are never overridden; third_party is skipped
+# because its slots were just remapped to a provider that has no such id.
+MODEL_DEFAULT_ID="ollama-cloud/deepseek-v4.1-flash:1017"
+MODEL_STATE="$PERSIST_DIR/model-default-1017"
+if [ "$TP_ACTIVE" != 1 ]; then
+  _md_state=0
+  [ -f "$MODEL_STATE" ] && _md_state=1
+  _md_rec_large=$(sed -n 's/^large=//p' "$MODEL_STATE" 2>/dev/null | head -1)
+  _md_rec_small=$(sed -n 's/^small=//p' "$MODEL_STATE" 2>/dev/null | head -1)
+  _md_rec_deep=$(sed -n 's/^deep=//p' "$MODEL_STATE" 2>/dev/null | head -1)
+  _md_new=""
+  _md_forced=0
+  for _md_slot in large small deep; do
+    case "$_md_slot" in
+      large) _md_val=$LARGE_MODEL; _md_env=${CRUSH_LARGE_MODEL:-}; _md_rec=$_md_rec_large ;;
+      small) _md_val=$SMALL_MODEL; _md_env=${CRUSH_SMALL_MODEL:-}; _md_rec=$_md_rec_small ;;
+      deep)  _md_val=$DEEP_MODEL;  _md_env=${CRUSH_DEEP_MODEL:-};  _md_rec=$_md_rec_deep ;;
+    esac
+    # no saved value = the rc's own default (now :1017) applies; nothing to do
+    [ -n "$_md_val" ] || continue
+    [ -n "$_md_env" ] && continue
+    # an id the slots would reject anyway is not worth recording in the state
+    safe_model_id "$_md_val" || continue
+    case "$(model_default_action "$_md_state" "$MODEL_DEFAULT_ID" "$_md_val" "$_md_rec")" in
+      force)
+        _md_new="${_md_new}${_md_slot}=${_md_val}"$'\n'
+        _md_forced=1
+        case "$_md_slot" in
+          large) LARGE_MODEL=$MODEL_DEFAULT_ID ;;
+          small) SMALL_MODEL=$MODEL_DEFAULT_ID ;;
+          deep)  DEEP_MODEL=$MODEL_DEFAULT_ID ;;
+        esac
+        ;;
+    esac
+  done
+  if [ -n "$_md_new" ]; then
+    printf '%s' "$_md_new" > "$MODEL_STATE.tmp.$$" && mv -f "$MODEL_STATE.tmp.$$" "$MODEL_STATE"
+  else
+    # Done: keep an EMPTY state file. Deleting it would re-arm the override for
+    # the next start and silently undo a model the user picks later.
+    : > "$MODEL_STATE"
+  fi
+  if [ "$_md_forced" = 1 ]; then
+    echo "[addon] default model set to $MODEL_DEFAULT_ID (one-time override of the saved model options)"
+  fi
 fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"

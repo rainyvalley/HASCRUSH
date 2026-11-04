@@ -55,16 +55,18 @@ Set these in the add-on's **Configuration** tab. Most changes apply when you res
 
 | Option | Default | What it does |
 |---|---|---|
-| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash` | The main model, from a list. |
+| `crush_large_model` | `ollama-cloud/deepseek-v4.1-flash:1017` | The main model, from a list. |
 | `crush_large_model_custom` | empty | Any model id. Wins over the list when set. |
-| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash` | The helper model for titles and summaries, from a list. |
+| `crush_small_model` | `ollama-cloud/deepseek-v4.1-flash:1017` | The helper model for titles and summaries, from a list. |
 | `crush_small_model_custom` | empty | Any model id. Wins over the list when set. |
-| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash` | A model added to the picker for hard problems. Crush does not use it until you pick it. |
+| `crush_deep_model` | `ollama-cloud/deepseek-v4.1-flash:1017` | A model added to the picker for hard problems. Crush does not use it until you pick it. |
 | `crush_deep_model_custom` | empty | Any model id. Wins over the list when set. |
 | `crush_reasoning_effort` | `high` | How hard the main model thinks: `low`, `high` or `max`. Does not change the helper model. |
 | `crush_discover_models` | `true` | Add every model your providers offer to the picker. Turn off to show only models listed in the config. |
 
 A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -` only.
+
+**Upgrading to 1.0.52 sets these three slots to `ollama-cloud/deepseek-v4.1-flash:1017` once, even if you had saved a different model.** The add-on remembers the saved values and keeps the new default while the Configuration tab still shows them; change a slot there and that slot is yours from then on. Slots set through `CRUSH_*` environment variables are never overridden.
 
 ### Servers and config
 

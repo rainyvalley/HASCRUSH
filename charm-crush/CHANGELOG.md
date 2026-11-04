@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.52] - 2026-11-03
+
+### Changed
+- **Default model is now `ollama-cloud/deepseek-v4.1-flash:1017`** for the
+  Daily, Helper and Deep slots. The untagged `deepseek-v4.1-flash` stays on the
+  picklists as an alternative.
+- **Existing installs are moved to the new default once, even when a different
+  model was saved in the add-on options.** The add-on records what the saved
+  slots said when the override was applied and keeps forcing the new default
+  while they still say that; changing a slot in the Home Assistant UI
+  afterwards releases the override for that slot, so a later choice sticks.
+  Slots supplied through `CRUSH_*` environment variables are never overridden,
+  and `provider: third_party` is left alone (the add-on already warns there).
+
 ## [1.0.51] - 2026-10-23
 
 ### Fixed

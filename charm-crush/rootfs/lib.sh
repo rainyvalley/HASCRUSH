@@ -352,6 +352,24 @@ apply_model_slot() {
     printf '\nmodel %s %s\n' "$1" "$2" >> "$crushrc"
   fi
 }
+
+# ── one-time default-model override ─────────────────────────────────────
+# The add-on default moved to ollama-cloud/deepseek-v4.1-flash:1017 (2026-11).
+# /data/options.json is the Supervisor's snapshot of the user's SAVED options,
+# rewritten on every start, so a stale saved pick cannot be edited in place.
+# run.sh instead keeps a state file next to the crush data recording what each
+# slot said when the override was first applied, and forces the new default
+# while the saved value is still that recorded one. A value the user changes
+# afterwards matches neither the default nor the recorded one, releasing that
+# slot - so the override is one-time and a later deliberate choice sticks.
+# Pure (no file I/O): $1 = state present (0|1), $2 = forced id, $3 = saved
+# value, $4 = recorded value; prints force | keep | release.
+model_default_action() {
+  if [ "$1" != 1 ]; then printf 'force'; return 0; fi
+  if [ "$3" = "$2" ]; then printf 'keep'; return 0; fi
+  if [ -n "$4" ] && [ "$3" = "$4" ]; then printf 'force'; return 0; fi
+  printf 'release'
+}
 # ── third-party provider remap ───────────────────────────────────────────
 # Needs the global $crushrc. $1 = the third-party provider id run.sh uses.
 # The remap rewrites the PERSISTED rc, which is kept across starts (fallback
