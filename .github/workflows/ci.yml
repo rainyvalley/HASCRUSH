@@ -278,7 +278,7 @@ jobs:
             if ! echo "$crushrc" | grep -qF "Bearer \$MCP_TOKEN_home_assistant"; then fail 'hyphenated name not mapped to MCP_TOKEN_home_assistant'; fi
             if echo "$crushrc" | grep -qF 'MCP_TOKEN_home-assistant'; then fail 'hyphenated token var left in crushrc'; fi
             # 2c) stdio entry: command, both args as separate tokens, timeout
-            if ! echo "$crushrc" | grep -qE 'mcp add relay --type stdio --command "socat" --args STDIO --args TCP:192\.0\.2\.5:3010 --timeout 20'; then fail 'stdio relay entry not applied as expected'; fi
+            if ! echo "$crushrc" | grep -qE 'mcp add relay --type stdio --command "socat" --args "STDIO" --args "TCP:192\.0\.2\.5:3010" --timeout 20'; then fail 'stdio relay entry not applied as expected'; fi
             # 3) the token/key must be REFERENCED via env, never INLINED, in
             #    both the generated rc and the boot log
             if echo "$crushrc" | grep -qF 'smoke-token-not-real'; then fail 'token inlined in crushrc'; fi
