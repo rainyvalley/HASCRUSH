@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.99] - 2026-11-03
+
+### Changed
+- **New builds bump the add-on version automatically**, so Home Assistant
+  offers the update without anyone editing `config.yaml` by hand.
+- The `ollama-cloud/deepseek-v4.1-flash:1017` entry is in the Daily, Helper and
+  Deep picklists (it has been the default since 1.0.52); install this version
+  and it appears in the Configuration tab.
+
 ## [1.0.53] - 2026-11-03
 
 ### Changed

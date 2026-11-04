@@ -34,3 +34,20 @@ RUN="$REPO/charm-crush/rootfs/run.sh"
 @test "an operator-supplied CRUSH_* value is never overwritten" {
   grep -qF '[ -n "${!_md_var:-}" ] && continue' "$RUN"
 }
+
+@test "config.yaml offers the :1017 model in all three picklists" {
+  CFG="$REPO/charm-crush/config.yaml"
+  for slot in large small deep; do
+    grep -qE "^  crush_${slot}_model: list\\(.*ollama-cloud/deepseek-v4\\.1-flash:1017" "$CFG"
+  done
+  grep -qF 'crush_large_model: "ollama-cloud/deepseek-v4.1-flash:1017"' "$CFG"
+}
+
+@test "a build push bumps the add-on version automatically" {
+  W="$REPO/.github/workflows/version-bump.yml"
+  [ -f "$W" ]
+  grep -qF 'contents: write' "$W"
+  grep -qF 'Bump HASSCrush to ' "$W"
+  # the repo rule: never persist credentials in a checkout
+  grep -qF 'persist-credentials: false' "$W"
+}
