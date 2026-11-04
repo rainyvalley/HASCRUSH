@@ -49,8 +49,8 @@ RUN apk add --no-cache \
 
 # Install ttyd static binary (avoids libwebsockets issues on alpine).
 # Supply-chain pin: sha256 of the pinned release binaries, recorded here and
-# verified at build time against the release's SHA256SUMS. Refreshed weekly by
-# .github/workflows/update-pins.yml (version URL and BOTH hashes move together).
+# verified at build time. .github/workflows/update-pins.yml refreshes the
+# version URL and BOTH hashes from the release's SHA256SUMS.
 ARG BUILD_ARCH
 ARG TTYD_SHA256_X86_64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165

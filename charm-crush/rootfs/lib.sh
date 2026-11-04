@@ -22,7 +22,7 @@
 #    code), spaces inside double quotes, or a single-quoted string with no
 #    `'` in it (bash treats it as fully literal, so JSON for MCP_SERVERS fits).
 #  - the NAME is checked separately by env_name_ok / env_file_clean below.
-# shellcheck disable=SC2034  # ENV_PAT is consumed by run.sh's env-file grep (and tests)
+# shellcheck disable=SC2034  # ENV_PAT is consumed by env_file_clean (and tests)
 ENV_PAT='^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=("[A-Za-z0-9_./:@+%=,~? -]*"|'"'"'[^'"'"']*'"'"'|[A-Za-z0-9_./:@+%=,~?-]+)?([[:space:]]+#.*)?$'
 # (the trailing ? on the value group also keeps a bare `NAME=` line: empty
 # value = explicitly unset, valid)
@@ -220,11 +220,10 @@ mcp_remove() {
 }
 
 mcp_sanitize() {
-  # One-time repair for rcs damaged by pre-1.0.14 single-line deletes: those
-  # removed only the HEAD line ("mcp add openscad --type stdio") of a
-  # backslash-continued entry, orphaning the continuation lines in the
-  # persisted crushrc (failures like "mcp add: unknown flag network" /
-  # "unknown flag 168.1.252:3010"- the token got split mid-word). Also
+  # Repairs an rc whose HEAD line ("mcp add openscad --type stdio") of a
+  # backslash-continued entry is gone, orphaning the continuation lines
+  # (failures like "mcp add: unknown flag network" / "unknown flag
+  # 168.1.252:3010" - the token got split mid-word). Also
   # repairs editor-wrapped tokens inside an entry: while an mcp add chain is
   # open, the next line (even a bare value like "168.1.252:3010") JOINS the
   # previous line seamlessly - reproducing the original unbroken token.
@@ -472,7 +471,7 @@ ttyd_args() {
 # /usr/local/share/) adds Ctrl/Alt/Tab (latching) and Esc/Del/Paste (one-shot)
 # for touch screens, composing latches at the WebSocket send layer.
 #
-# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML [OFFSET] [DEBUG]
+# touchbar_inject SRC_HTML BAR_JS THEME OUT_HTML [OFFSET] [DEBUG] [NOBAR] [AUTOCOPY]
 #   SRC = ttyd's embedded client page (extracted at BUILD time by the
 #         Dockerfile from the pinned binary), BAR_JS = touchbar.js,
 #   THEME = dark|light (mismatching values fall back to dark),
@@ -596,12 +595,9 @@ version_gt() {
 }
 
 # ── one-time move of the persisted data ──────────────────────────────────
-# persist_migrate OLD NEW MARKER: before 1.0.51 the add-on kept its data in
-# OLD (inside the shared Home Assistant config folder, which other add-ons
-# can write). It now lives in NEW (the add-on's private folder). The first
-# start copies OLD to NEW without overwriting anything already in NEW,
-# leaves OLD in place, and writes MARKER so it never runs twice. Prints what
-# it did (one line per step) for the add-on log.
+# persist_migrate OLD NEW MARKER: copies OLD into NEW without overwriting
+# anything already in NEW, leaves OLD in place, and writes MARKER so it never
+# runs twice. Prints what it did (one line per step) for the add-on log.
 persist_migrate() {
   local old=$1 new=$2 marker=$3
   [ -e "$marker" ] && return 0

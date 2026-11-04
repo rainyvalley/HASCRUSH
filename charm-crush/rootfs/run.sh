@@ -102,9 +102,8 @@ else
 fi
 
 # Data lives in the add-on's PRIVATE config folder (addon_config, mounted at
-# /config). It used to live in /homeassistant/.crushdata, which every add-on
-# with write access to the HA config folder can change; persist_migrate
-# (lib.sh) copies that old folder over once and leaves it in place.
+# /config). persist_migrate (lib.sh) copies an older /homeassistant/.crushdata
+# folder over once and leaves it in place.
 PERSIST_DIR=/config/crushdata
 OLD_PERSIST_DIR=/homeassistant/.crushdata
 persist_migrate "$OLD_PERSIST_DIR" "$PERSIST_DIR" "$PERSIST_DIR/.migrated-from-homeassistant" || true
@@ -304,7 +303,7 @@ if [ "$CRUSHRC_FETCHED" != 1 ]; then
 # Built-in fallback crushrc (add-on). Set crush_config_url to manage centrally.
 
 # Key resolution: environment -> addon option -> persisted file.
-# NOTE the classic bug fixed here: `: "${VAR:-cmd}"` does NOT assign!
+# NOTE: `: "${VAR:-cmd}"` does NOT assign; the `||` form below does.
 [ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(jq -r '.ollama_api_key // ""' /data/options.json 2>/dev/null)"
 [ -n "$OLLAMA_API_KEY" ] || OLLAMA_API_KEY="$(grep -m1 -s '^OLLAMA_API_KEY=' "$HOME/.config/crush/ollama.env" 2>/dev/null | cut -s -d= -f2-)"
 export OLLAMA_API_KEY
@@ -329,7 +328,7 @@ model add ollama-cloud/deepseek-v4.1-flash:1017 --name "DeepSeek V4.1 Flash" --c
 model large ollama-cloud/deepseek-v4.1-flash:1017 --reasoning-effort high
 model small ollama-cloud/deepseek-v4.1-flash:1017 --reasoning-effort high
 
-# Former defaults, still registered as picker alternatives (pick them via / in the TUI):
+# Picker alternatives (pick them via / in the TUI):
 model add ollama-cloud/deepseek-v4.1-flash --name "DeepSeek V4.1 Flash (untagged)" --context-window 1048576 --default-max-tokens 131072 --can-reason true --supports-images true --reasoning-effort high --price-input 0.3 --price-output 1.2
 model add ollama-cloud/glm-5.3-flash --name "GLM 5.3 Flash" --context-window 1048576 --default-max-tokens 131072 --can-reason true --reasoning-effort high --price-input 0.15 --price-output 0.5
 model add ollama-cloud/glm-5.3 --name "GLM 5.3" --context-window 1000000 --default-max-tokens 128000 --can-reason true --reasoning-effort max --price-input 1.4 --price-output 4.4
@@ -403,8 +402,7 @@ if [ "$PROVIDER" = "third_party" ]; then
     provider_remap "$TPID" "$TP_URL"
     TP_ACTIVE=1
     warn_plain_http "third_party_base_url uses plain http - the API key travels unencrypted" "$TP_URL"
-    # pre-fix boots ran `sed -iE`, which is -i with backup SUFFIX "E": drop
-    # the stray copy of the rc that left next to it
+    # `sed -iE` is -i with backup SUFFIX "E"; drop the stray rc copy.
     rm -f "${crushrc}E"
     # the key stays as --api-key "$OLLAMA_API_KEY" in the rc; the third-party
     # key is exported as OLLAMA_API_KEY AFTER the Ollama key block below (no
@@ -743,15 +741,13 @@ if [ "$TP_ACTIVE" = 1 ]; then
   done
 fi
 # ── one-time default-model override (2026-11) ───────────────────────────
-# The default moved to ollama-cloud/deepseek-v4.1-flash:1017. /data/options.json
-# is the Supervisor's snapshot of the saved options and is regenerated on every
-# start, so editing it would last exactly one boot. The override is therefore
+# /data/options.json is the Supervisor's snapshot of the saved options and is
+# regenerated on every start, so an edit there lasts one boot. The default is
 # written ONCE into the add-on's env file ($ENV_FILE): a CRUSH_* default there
-# outranks the Configuration tab on every later start, so the new model just
-# stays. To choose another model later, edit or remove those lines. An existing
-# CRUSH_* value (yours, from the environment or that file) is never touched, and
-# provider=third_party is skipped because its slots were just remapped to a
-# service that has no such id.
+# outranks the Configuration tab on every later start. To choose another model,
+# edit or remove those lines. An existing CRUSH_* value (environment or file)
+# is never touched, and provider=third_party is skipped (its slots were
+# remapped to a service that has no such id).
 MODEL_DEFAULT_ID="ollama-cloud/deepseek-v4.1-flash:1017"
 MODEL_DEFAULT_MARKER="$PERSIST_DIR/.model-default-1017"
 if [ "$TP_ACTIVE" != 1 ] && [ ! -e "$MODEL_DEFAULT_MARKER" ]; then
@@ -887,7 +883,7 @@ if [ "$AUTO_UPDATE" = "true" ]; then
 fi
 
 # ── Web terminal ────────────────────────────────────────────────────────
-# One jq spawn for the eight terminal-web options (NUL-delimited, same pattern
+# One jq spawn for the nine terminal-web options (NUL-delimited, same pattern
 # as the model-slot read above). touch_bar uses the if-form, not // : jq's //
 # treats an explicit false as unset, and an opt-in toggle must stay falseable.
 mapfile -d '' -t -- _topts < <(jq -rj '[.terminal_font_size // 14, .terminal_theme // "dark", (if .session_persistence == null then true else .session_persistence end), (.working_directory // "/homeassistant"), (if .touch_bar == null then true else .touch_bar end), (.touch_bar_offset // 0), (if .touch_bar_debug == null then false else .touch_bar_debug end), (if .terminal_mouse == null then true else .terminal_mouse end), (if .osc52_autocopy == null then false else .osc52_autocopy end)] | .[] | (tostring + "\u0000")' /data/options.json 2>/dev/null)

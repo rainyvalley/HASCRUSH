@@ -99,14 +99,11 @@ jobs:
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint && chmod +x /tmp/actionlint
           /tmp/actionlint -color
 
-      - name: Version-bump recency gate (the 1.0.28/1.0.29 trap)
+      - name: Version-bump recency gate
         run: |
-          # Trap this gate encodes: 1.0.28/1.0.29 committed run.sh changes AFTER
-          # the config.yaml version-bump commit and never bumped again. The
-          # Supervisor compares the config.yaml version string against the
-          # installed add-on's version - with the string unchanged it refuses
-          # to update, so the newer run.sh was unreachable from the add-on
-          # (invisible in CI, a stale image shipped silently).
+          # The Supervisor compares the config.yaml version string against the
+          # installed add-on's version; with the string unchanged it refuses to
+          # update, so a newer run.sh would be unreachable from the add-on.
           # Rule: run.sh / lib.sh / Dockerfile must not have a commit newer
           # than the last config.yaml commit. A legit code change therefore
           # bumps config.yaml last (same-release bump commit is fine: equal
