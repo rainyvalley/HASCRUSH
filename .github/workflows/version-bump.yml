@@ -9,13 +9,13 @@ name: version
 on:
   push:
     branches: [main]
-  workflow_dispatch:
     paths:
       - 'charm-crush/rootfs/**'
       - 'charm-crush/Dockerfile'
       - 'charm-crush/build.yaml'
       - 'charm-crush/translations/**'
       - 'charm-crush/config.yaml'
+  workflow_dispatch:
 
 # The only job that writes to the repository. Everything else stays read-only.
 permissions:
