@@ -2,3 +2,5 @@
 # never snapshot these (could contain provider stores / session history).
 .local/
 .crush/
+# Python bytecode from the release-pin scripts
+__pycache__/

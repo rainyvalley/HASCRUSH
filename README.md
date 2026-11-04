@@ -20,6 +20,9 @@ This repository holds one add-on, in [`charm-crush/`](charm-crush/).
 - **Touch bar (optional).** On a phone or tablet, an on-screen row of keys (Ctrl, Alt, Tab, Esc, Del, Copy, Paste).
 - **Home Assistant access.** The `ha` command is installed and Crush can call the Home Assistant API.
 - **Crush updates (optional, off by default).** Crush can update itself when the add-on starts.
+- **Pinned builds stay current.** A weekly job moves Crush, ttyd and the Home Assistant CLI
+  (with the checksums the build verifies) and the Alpine base images to their latest releases,
+  bumps the add-on version and re-runs CI.
 
 ## What you need
 

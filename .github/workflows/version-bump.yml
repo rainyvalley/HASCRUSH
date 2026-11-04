@@ -49,32 +49,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          old=$(sed -n 's/^version: "\(.*\)"$/\1/p' charm-crush/config.yaml)
-          [ -n "$old" ] || { echo "::error::no version: line in config.yaml"; exit 1; }
-          major=${old%%.*}
-          rest=${old#*.}
-          minor=${rest%%.*}
-          patch=${rest##*.}
-          case "$patch" in
-            ''|*[!0-9]*) echo "::error::unexpected version format: $old"; exit 1 ;;
-          esac
-          new="$major.$minor.$((patch + 1))"
-          sed -i "s/^version: \"$old\"$/version: \"$new\"/" charm-crush/config.yaml
-          python3 - "$new" "$(date -u +%F)" "$(git rev-parse --short HEAD)" <<'PY'
-          import sys
-          version, day, sha = sys.argv[1], sys.argv[2], sys.argv[3]
-          path = 'charm-crush/CHANGELOG.md'
-          text = open(path).read()
-          marker = '## [Unreleased]\n'
-          if marker not in text:
-              sys.exit('CHANGELOG.md has no "## [Unreleased]" section')
-          section = (
-              marker
-              + '\n## [%s] - %s\n\n### Build\n\n'
-              '- Automatic version bump for build `%s`.\n' % (version, day, sha)
-          )
-          open(path, 'w').write(text.replace(marker, section, 1))
-          PY
+          # The bump logic is shared with update-pins.yml; it prints the version.
+          new="$(python3 .github/scripts/bump_version.py)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add charm-crush/config.yaml charm-crush/CHANGELOG.md

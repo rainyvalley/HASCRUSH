@@ -48,10 +48,9 @@ RUN apk add --no-cache \
     && update-ca-certificates
 
 # Install ttyd static binary (avoids libwebsockets issues on alpine).
-# Supply-chain pin (2026-10-06): sha256 of the 1.7.7 release binaries is
-# recorded here and verified at build time — upstream publishes no checksum
-# files, so the hashes were captured over a verified TLS fetch on 2026-10-06
-# and committed. Updating ttyd = bump the version URL + BOTH hashes together.
+# Supply-chain pin: sha256 of the pinned release binaries, recorded here and
+# verified at build time against the release's SHA256SUMS. Refreshed weekly by
+# .github/workflows/update-pins.yml (version URL and BOTH hashes move together).
 ARG BUILD_ARCH
 ARG TTYD_SHA256_X86_64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
@@ -97,9 +96,9 @@ RUN set -eux; \
 # for newer versions). The tarball is verified against the release's own
 # checksums.txt before extraction; a failed/corrupted download FAILS the
 # build instead of silently falling back to a different version.
-# Asset naming (verified against v0.99.0): crush_<ver>_Linux_<arch>.tar.gz with
-# the binary at crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine
-# packages (arch names x86_64/aarch64) — an alternative install path.
+# Asset naming: crush_<ver>_Linux_<arch>.tar.gz with the binary at
+# crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine packages
+# (arch names x86_64/aarch64) — an alternative install path.
 ARG CRUSH_VERSION=0.99.0
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
@@ -125,13 +124,13 @@ RUN set -eux; \
 
 # Home Assistant CLI (ha command) - pinned, retried and checksum-verified.
 # Upstream publishes only amd64 and aarch64, which are the only arches this
-# add-on declares anyway. The sha256 values below were taken from the digest
-# GitHub records for each 5.2.0 release asset (releases API "digest" field)
-# and matched against a fresh download; upstream ships no checksum file of
-# its own. Updating the CLI = bump HA_CLI_VERSION + BOTH hashes together.
-ARG HA_CLI_VERSION=5.2.0
-ARG HA_CLI_SHA256_AMD64=701be67aee9f1e092254097a40d006b450d1578641a262258b182237987e7479
-ARG HA_CLI_SHA256_AARCH64=af8c03ccddb65d223d7b7dab1570197b8a2ff8fc7139c1db054d08a91a4f8073
+# add-on declares anyway. The sha256 values below come from the digest GitHub
+# records for each release asset (releases API "digest" field); upstream ships
+# no checksum file of its own. Refreshed weekly by
+# .github/workflows/update-pins.yml (version and BOTH hashes move together).
+ARG HA_CLI_VERSION=5.6.0
+ARG HA_CLI_SHA256_AMD64=9d259c700bfcd45b6a793709e1fcfd304a595624dda10cfa5edde66f0b8a9656
+ARG HA_CLI_SHA256_AARCH64=4ecdbd67002defbf96e4668e62f631e9767b92d18e1ce54bfee6ddd040c20e73
 RUN case "${BUILD_ARCH}" in \
         amd64) HA_SHA256="${HA_CLI_SHA256_AMD64}" ;; \
         aarch64) HA_SHA256="${HA_CLI_SHA256_AARCH64}" ;; \

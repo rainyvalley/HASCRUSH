@@ -1,0 +1,10 @@
+# Keep the CI surface current: the GitHub Actions SHAs. The add-on's own
+# version pins (Crush, ttyd, the HA CLI and the Alpine base images) are
+# refreshed by .github/workflows/update-pins.yml, which Dependabot cannot see:
+# the base images live in build.yaml and the binaries are release assets.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

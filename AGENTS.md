@@ -92,6 +92,10 @@ git log --oneline -1 -- charm-crush/rootfs/run.sh charm-crush/rootfs/lib.sh char
 
 Key precedence everywhere: **real environment > env file (/config/crushdata/env) > Options tab > central URL > persisted file**.
 
+## Updating pins
+
+`charm-crush/Dockerfile` pins Crush, ttyd (with two sha256 sums) and the HA CLI (with two asset digests); `build.yaml` pins the Alpine base images. A weekly workflow (`.github/workflows/update-pins.yml`, also `workflow_dispatch`) runs `.github/scripts/update_pins.py`, which bumps all of them to the latest releases (base images only to a tag both arches publish), then adds the changelog section and bumps the add-on version via `.github/scripts/bump_version.py` in the same commit and dispatches CI. Commits it pushes use the workflow token, so they do not trigger workflows on their own. Dependabot covers the action SHAs. Hand-editing a pin is still fine, but bump the add-on version (a workflow guards on that).
+
 ## Gotchas
 
 - **Security rating is a Supervisor formula, not a guess** (`supervisor/apps/utils.py::rating_security`, scale 1-8, base 5): ingress +2, custom AppArmor profile +1, `hassio_role` manager -1 / admin -2, `host_network` -1, `host_pid` -2, privileged caps -1, docker/full access = 1. HASSCrush sits at 7: ingress, `apparmor.txt` and `hassio_role: manager` (from 1.0.49, so `ha core check/logs/stats` work; it was the default role, rating 8, in 1.0.45-1.0.48, where those commands returned 403). Admin-only endpoints stay denied by design and the CRUSH.md limits say so.

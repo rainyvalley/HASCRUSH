@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.101] - 2026-11-03
+
+### Changed
+- **Every pinned download is refreshed automatically.** A weekly job
+  (`update-pins.yml`) moves Crush, ttyd, the Home Assistant CLI (with the
+  checksums the build verifies) and the Alpine base images to the latest
+  releases, bumps the add-on version in the same commit and re-runs CI.
+  Dependabot keeps the GitHub Actions SHAs current.
+- The bundled Home Assistant CLI is now **5.6.0** (from 5.2.0), with that
+  release's asset digests.
+
 ## [1.0.100] - 2026-11-03
 
 ### Changed
