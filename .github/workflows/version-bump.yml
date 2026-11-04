@@ -9,6 +9,7 @@ name: version
 on:
   push:
     branches: [main]
+  workflow_dispatch:
     paths:
       - 'charm-crush/rootfs/**'
       - 'charm-crush/Dockerfile'
@@ -30,15 +31,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Two commits: the guard diffs HEAD against its parent. At depth 1
+          # HEAD looks like a root commit, so every file (config.yaml included)
+          # reads as added and the guard would always skip.
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Does this commit already set the version?
         id: guard
         run: |
-          if git show --unified=0 --format= HEAD -- charm-crush/config.yaml \
-             | grep -qE '^[+-]version:'; then
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-            echo "this commit already changed the version - nothing to do"
+          if git rev-parse -q --verify HEAD^ >/dev/null; then
+            if git diff HEAD^ HEAD -- charm-crush/config.yaml | grep -qE '^[+-]version:'; then
+              echo "skip=1" >> "$GITHUB_OUTPUT"
+              echo "this commit already changed the version - nothing to do"
+            fi
           fi
 
       - name: Bump the version and add the changelog section
