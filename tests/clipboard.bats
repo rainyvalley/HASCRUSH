@@ -25,9 +25,12 @@ RUN="$ROOT/rootfs/run.sh"
   m=$(tmux -L "$sock" show -gv mouse); c=$(tmux -L "$sock" show -gv set-clipboard)
   tmux -L "$sock" kill-server
   [ "$m" = off ] && [ "$c" = on ]
-  HASSCRUSH_MOUSE=on tmux -L "$sock" -f "$TMUXCONF" new-session -d 'sleep 20'
-  m=$(tmux -L "$sock" show -gv mouse)
-  tmux -L "$sock" kill-server
+  # A SECOND socket: reusing the one just killed races with the dying server's
+  # socket cleanup (seen on slow CI runners as "server exited unexpectedly").
+  sock_on="$sock-on"
+  HASSCRUSH_MOUSE=on tmux -L "$sock_on" -f "$TMUXCONF" new-session -d 'sleep 20'
+  m=$(tmux -L "$sock_on" show -gv mouse)
+  tmux -L "$sock_on" kill-server
   [ "$m" = on ]
 }
 
