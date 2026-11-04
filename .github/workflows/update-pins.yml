@@ -4,7 +4,7 @@ name: pins
 # ttyd (with the two binary sums), the Home Assistant CLI (with the two asset
 # digests) and the Alpine base images. The add-on version is bumped in the same
 # commit, so Home Assistant offers the rebuild. A no-change week writes nothing.
-# GitHub Actions SHAs are handled by Dependabot (dependabot.yml).
+# GitHub Actions SHAs are bumped by hand here (no Dependabot in this repo).
 on:
   schedule:
     - cron: '17 5 * * 1'   # Mondays, 05:17 UTC

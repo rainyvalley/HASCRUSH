@@ -94,7 +94,7 @@ Key precedence everywhere: **real environment > env file (/config/crushdata/env)
 
 ## Updating pins
 
-`charm-crush/Dockerfile` pins Crush, ttyd (with two sha256 sums) and the HA CLI (with two asset digests); `build.yaml` pins the Alpine base images. A weekly workflow (`.github/workflows/update-pins.yml`, also `workflow_dispatch`) runs `.github/scripts/update_pins.py`, which bumps all of them to the latest releases (base images only to a tag both arches publish), then adds the changelog section and bumps the add-on version via `.github/scripts/bump_version.py` in the same commit and dispatches CI. Commits it pushes use the workflow token, so they do not trigger workflows on their own. Dependabot covers the action SHAs. Hand-editing a pin is still fine, but bump the add-on version (a workflow guards on that).
+`charm-crush/Dockerfile` pins Crush, ttyd (with two sha256 sums) and the HA CLI (with two asset digests); `build.yaml` pins the Alpine base images. A weekly workflow (`.github/workflows/update-pins.yml`, also `workflow_dispatch`) runs `.github/scripts/update_pins.py`, which bumps all of them to the latest releases (base images only to a tag both arches publish), then adds the changelog section and bumps the add-on version via `.github/scripts/bump_version.py` in the same commit and dispatches CI. Commits it pushes use the workflow token, so they do not trigger workflows on their own. GitHub Actions SHAs are bumped by hand (this repo deliberately has no Dependabot). Hand-editing a pin is still fine, but bump the add-on version (a workflow guards on that).
 
 ## Gotchas
 

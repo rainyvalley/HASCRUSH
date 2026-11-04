@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # The pinned downloads (Crush, ttyd, HA CLI, Alpine base) are refreshed by
-# update-pins.yml; Dependabot covers the action SHAs. These pin the wiring so a
-# future edit cannot silently drop one of the pins from the sweep.
+# update-pins.yml. These pin the wiring so a future edit cannot silently drop
+# one of the pins from the sweep.
 
 REPO="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 W="$REPO/.github/workflows/update-pins.yml"
@@ -24,12 +24,6 @@ S="$REPO/.github/scripts/update_pins.py"
   grep -qF 'home-assistant/cli' "$S"
   grep -qF 'amd64-base' "$S"
   grep -qF 'aarch64-base' "$S"
-}
-
-@test "Dependabot keeps the action SHAs current" {
-  D="$REPO/.github/dependabot.yml"
-  [ -f "$D" ]
-  grep -qF 'package-ecosystem: github-actions' "$D"
 }
 
 @test "the version bump is shared by both build workflows" {
