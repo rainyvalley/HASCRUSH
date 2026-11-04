@@ -66,7 +66,7 @@ Set these in the add-on's **Configuration** tab. Most changes apply when you res
 
 A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -` only.
 
-**Upgrading to 1.0.52 sets these three slots to `ollama-cloud/deepseek-v4.1-flash:1017` once, even if you had saved a different model.** The add-on remembers the saved values and keeps the new default while the Configuration tab still shows them; change a slot there and that slot is yours from then on. Slots set through `CRUSH_*` environment variables are never overridden.
+**Upgrading to 1.0.53 sets these three slots to `ollama-cloud/deepseek-v4.1-flash:1017` once, even if you had saved a different model.** The choice is written once as `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL` and `CRUSH_DEEP_MODEL` in `/config/crushdata/env`; those defaults outrank the Configuration tab, so it stays across restarts. Edit or remove those lines to choose another model. A `CRUSH_*` value you already set there is never touched.
 
 ### Servers and config
 

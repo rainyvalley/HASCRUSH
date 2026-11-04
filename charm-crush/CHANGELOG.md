@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.53] - 2026-11-03
+
+### Changed
+- **The one-time move to `ollama-cloud/deepseek-v4.1-flash:1017` is now saved in
+  the add-on's env file.** On the first start after updating, the add-on writes
+  `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL` and `CRUSH_DEEP_MODEL` to
+  `/config/crushdata/env` (once, then never again). Those defaults outrank the
+  Configuration tab, so the new model stays across restarts instead of
+  reverting to the saved option. Edit or remove those three lines to choose
+  something else; a `CRUSH_*` value you already set is never touched. This
+  replaces the 1.0.52 release-on-change logic, which relied on the Supervisor's
+  rewritten `options.json` snapshot.
+
 ## [1.0.52] - 2026-11-03
 
 ### Changed

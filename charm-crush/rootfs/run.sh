@@ -744,57 +744,46 @@ if [ "$TP_ACTIVE" = 1 ]; then
 fi
 # ── one-time default-model override (2026-11) ───────────────────────────
 # The default moved to ollama-cloud/deepseek-v4.1-flash:1017. /data/options.json
-# is the Supervisor's snapshot of the saved options and is rewritten on every
-# start, so a stale saved pick cannot be edited in place. run.sh records what
-# each slot said when the override was first applied and keeps forcing the new
-# default while the saved value is still that recorded one; a later deliberate
-# choice in the HA UI matches neither, so that slot is released and respected.
-# See model_default_action() in lib.sh. Slots set through CRUSH_* env are a
-# per-run operator choice and are never overridden; third_party is skipped
-# because its slots were just remapped to a provider that has no such id.
+# is the Supervisor's snapshot of the saved options and is regenerated on every
+# start, so editing it would last exactly one boot. The override is therefore
+# written ONCE into the add-on's env file ($ENV_FILE): a CRUSH_* default there
+# outranks the Configuration tab on every later start, so the new model just
+# stays. To choose another model later, edit or remove those lines. An existing
+# CRUSH_* value (yours, from the environment or that file) is never touched, and
+# provider=third_party is skipped because its slots were just remapped to a
+# service that has no such id.
 MODEL_DEFAULT_ID="ollama-cloud/deepseek-v4.1-flash:1017"
-MODEL_STATE="$PERSIST_DIR/model-default-1017"
-if [ "$TP_ACTIVE" != 1 ]; then
-  _md_state=0
-  [ -f "$MODEL_STATE" ] && _md_state=1
-  _md_rec_large=$(sed -n 's/^large=//p' "$MODEL_STATE" 2>/dev/null | head -1)
-  _md_rec_small=$(sed -n 's/^small=//p' "$MODEL_STATE" 2>/dev/null | head -1)
-  _md_rec_deep=$(sed -n 's/^deep=//p' "$MODEL_STATE" 2>/dev/null | head -1)
+MODEL_DEFAULT_MARKER="$PERSIST_DIR/.model-default-1017"
+if [ "$TP_ACTIVE" != 1 ] && [ ! -e "$MODEL_DEFAULT_MARKER" ]; then
   _md_new=""
   _md_forced=0
   for _md_slot in large small deep; do
     case "$_md_slot" in
-      large) _md_val=$LARGE_MODEL; _md_env=${CRUSH_LARGE_MODEL:-}; _md_rec=$_md_rec_large ;;
-      small) _md_val=$SMALL_MODEL; _md_env=${CRUSH_SMALL_MODEL:-}; _md_rec=$_md_rec_small ;;
-      deep)  _md_val=$DEEP_MODEL;  _md_env=${CRUSH_DEEP_MODEL:-};  _md_rec=$_md_rec_deep ;;
+      large) _md_var=CRUSH_LARGE_MODEL ;;
+      small) _md_var=CRUSH_SMALL_MODEL ;;
+      deep)  _md_var=CRUSH_DEEP_MODEL ;;
     esac
-    # no saved value = the rc's own default (now :1017) applies; nothing to do
-    [ -n "$_md_val" ] || continue
-    [ -n "$_md_env" ] && continue
-    # an id the slots would reject anyway is not worth recording in the state
-    safe_model_id "$_md_val" || continue
-    case "$(model_default_action "$_md_state" "$MODEL_DEFAULT_ID" "$_md_val" "$_md_rec")" in
-      force)
-        _md_new="${_md_new}${_md_slot}=${_md_val}"$'\n'
-        _md_forced=1
-        case "$_md_slot" in
-          large) LARGE_MODEL=$MODEL_DEFAULT_ID ;;
-          small) SMALL_MODEL=$MODEL_DEFAULT_ID ;;
-          deep)  DEEP_MODEL=$MODEL_DEFAULT_ID ;;
-        esac
-        ;;
+    # a value already present (env or env file) is the operator's own default
+    [ -n "${!_md_var:-}" ] && continue
+    _md_new="${_md_new}${_md_var}=${MODEL_DEFAULT_ID}"$'\n'
+    _md_forced=1
+    case "$_md_slot" in
+      large) LARGE_MODEL=$MODEL_DEFAULT_ID ;;
+      small) SMALL_MODEL=$MODEL_DEFAULT_ID ;;
+      deep)  DEEP_MODEL=$MODEL_DEFAULT_ID ;;
     esac
   done
   if [ -n "$_md_new" ]; then
-    printf '%s' "$_md_new" > "$MODEL_STATE.tmp.$$" && mv -f "$MODEL_STATE.tmp.$$" "$MODEL_STATE"
-  else
-    # Done: keep an EMPTY state file. Deleting it would re-arm the override for
-    # the next start and silently undo a model the user picks later.
-    : > "$MODEL_STATE"
+    # private file: it also carries secrets from the user's own env lines
+    ( umask 077; {
+        printf '# One-time default-model override written by the 1.0.53 update.\n'
+        printf '# CRUSH_* defaults outrank the Configuration tab; edit or remove\n'
+        printf '# these lines to choose a different model.\n'
+        printf '%s' "$_md_new"
+      } >> "$ENV_FILE" )
+    echo "[addon] default model set to $MODEL_DEFAULT_ID (saved in $ENV_FILE - edit it to change)"
   fi
-  if [ "$_md_forced" = 1 ]; then
-    echo "[addon] default model set to $MODEL_DEFAULT_ID (one-time override of the saved model options)"
-  fi
+  : > "$MODEL_DEFAULT_MARKER"
 fi
 apply_model_slot large "$LARGE_MODEL"
 apply_model_slot small "$SMALL_MODEL"
