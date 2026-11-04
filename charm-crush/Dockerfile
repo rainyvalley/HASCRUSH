@@ -97,10 +97,10 @@ RUN set -eux; \
 # for newer versions). The tarball is verified against the release's own
 # checksums.txt before extraction; a failed/corrupted download FAILS the
 # build instead of silently falling back to a different version.
-# Asset naming (verified against v0.97.1): crush_<ver>_Linux_<arch>.tar.gz with
+# Asset naming (verified against v0.99.0): crush_<ver>_Linux_<arch>.tar.gz with
 # the binary at crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine
 # packages (arch names x86_64/aarch64) — an alternative install path.
-ARG CRUSH_VERSION=0.97.1
+ARG CRUSH_VERSION=0.99.0
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
         amd64) CRUSH_ARCH="x86_64" ;; \

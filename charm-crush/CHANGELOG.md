@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.100] - 2026-11-03
+
+### Changed
+- **Bundled Crush is now 0.99.0** (up from 0.97.1). Hooks can act on a whole
+  run (turns, sessions, permissions) and after a tool returns; provider and
+  model config moved to Catwalk v3, which migrates existing entries
+  automatically — the generated crushrc was re-checked against 0.99.0, where
+  `--type openai-compat`, `--can-reason` and `--reasoning-effort` still load.
+
 ## [1.0.99] - 2026-11-03
 
 ### Changed
