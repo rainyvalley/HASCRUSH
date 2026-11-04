@@ -1,12 +1,12 @@
 # HASSCrush
 
 <p align="center">
-  <img src="charm-crush/logo.png" alt="Crush" width="520">
+  <img src="logo.png" alt="Crush" width="520">
 </p>
 
 HASSCrush puts [Charm Crush](https://github.com/charmbracelet/crush), a terminal AI coding agent, in your Home Assistant sidebar. It talks to your own models (Ollama Cloud, an Ollama server on your network, or any OpenAI-compatible service) and can use MCP tool servers such as a memory server.
 
-This repository holds one add-on, in [`charm-crush/`](charm-crush/).
+This repository holds one add-on, in this folder.
 
 > The shape of this add-on (a web terminal behind HA ingress with a persistent tmux session) was inspired by [robsonfelix's claudecode add-on](https://github.com/robsonfelix/robsonfelix-hass-addons).
 
@@ -36,7 +36,7 @@ This repository holds one add-on, in [`charm-crush/`](charm-crush/).
 3. Open the **Configuration** tab. Paste your key into **ollama_api_key**. For another service, set **provider** to `third_party` and fill in **third_party_base_url** and **third_party_api_key**.
 4. Click **Start**, then click **HASSCrush** in the sidebar.
 
-What happens next: the add-on log shows `[addon]` lines, then the terminal opens in the sidebar with Crush running. If Crush shows a "Choose a model" screen, no key was found; see [Troubleshooting](#troubleshooting).
+What happens next: the add-on log shows `[addon]` lines, then the terminal opens a shell in the sidebar; type `crush` to start it. If Crush shows a "Choose a model" screen, no key was found; see [Troubleshooting](#troubleshooting).
 
 ## Options
 
@@ -69,7 +69,7 @@ Set these in the add-on's **Configuration** tab. Most changes apply when you res
 
 A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -` only.
 
-**Upgrading to 1.0.53 sets these three slots to `ollama-cloud/deepseek-v4.1-flash:1017` once, even if you had saved a different model.** The choice is written once as `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL` and `CRUSH_DEEP_MODEL` in `/config/crushdata/env`; those defaults outrank the Configuration tab, so it stays across restarts. Edit or remove those lines to choose another model. A `CRUSH_*` value you already set there is never touched.
+The three slots default to `ollama-cloud/deepseek-v4.1-flash:1017`. A one-time migration writes `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL` and `CRUSH_DEEP_MODEL` into `/config/crushdata/env`, and those values outrank the Configuration tab. Edit or remove those lines to choose another model. A `CRUSH_*` value already present there is not touched.
 
 ### Servers and config
 
@@ -166,7 +166,7 @@ For a memory server, use the same `user_id` in every client that should share on
 
 `crush_config_url` is the address of a Crush config file that several machines can share. It is fetched at every start. Keep keys out of it; it reads them from the environment.
 
-**The file is a shell script that runs as root in the add-on, so you must pin it.**
+**The file is a shell script that runs as root in the add-on. Pin its SHA-256.**
 
 1. Work out the hash of your template: `sha256sum crushrc.template`.
 2. Put the 64-character result in `crush_config_sha256`.
@@ -176,7 +176,7 @@ The add-on uses the fetched file only if all of these hold:
 
 - The URL starts with `https://`. A URL starting with `http://` is refused unless you turn on `crush_config_allow_http`.
 - The file's SHA-256 equals `crush_config_sha256`.
-- The file is 1 MB or less, looks like a Crush config (it has `provider add` or `model add` style lines) and passes `bash -n`.
+- The file is 1 MB or less, looks like a Crush config (it has `provider add`, `model add`, `model large` or `model small` lines) and passes `bash -n`.
 
 If any check fails, the add-on keeps the config it already has (the last good copy) and logs the reason. A hash mismatch is logged with both hashes.
 
@@ -184,7 +184,7 @@ If the file has a line `# config-version: N` and the same folder serves `config.
 
 ## Environment variables and the env file
 
-You can set options from the environment instead of the Configuration tab. The order of precedence is: real container environment, then the env file, then the Options tab.
+You can set options from the environment instead of the Configuration tab. The order of precedence is: the env file, then the real container environment, then the Options tab.
 
 | Variable | Same as option |
 |---|---|
@@ -199,10 +199,10 @@ You can set options from the environment instead of the Configuration tab. The o
 | `CRUSH_CONFIG_URL` | `crush_config_url` |
 | `MCP_SERVERS` | `mcp_servers` |
 
-The **env file** is `/config/crushdata/env`, one `NAME=value` per line. It is read at every start. Because of the move in 1.0.51, put it in `/config/crushdata/`, not the old folder.
+The **env file** is `/config/crushdata/env`, one `NAME=value` per line. It is read at every start.
 
 - Only the names in the table above are read, plus `CRUSH_UPDATE_VERSION` and `CRUSH_UPDATE_SHA256` (they come under `CRUSH_*`), `MCP_TOKEN_*`, `THIRD_PARTY_*` and any other `CRUSH_*`. Other names (for example `PATH` or `LD_PRELOAD`) are skipped and logged by name.
-- A value may use letters, digits and `_ . / : @ + % = , ~ ?`. Wrap a value with spaces in double quotes. For JSON such as `MCP_SERVERS`, wrap it in single quotes and leave out any `'` inside it.
+- A value may use letters, digits and `_ . / : @ + % = , ~ ? -`. Wrap a value with spaces in double quotes. For JSON such as `MCP_SERVERS`, wrap it in single quotes and leave out any `'` inside it.
 - Anything else is skipped and logged without showing the value. Nothing from this file is run as a command.
 
 ## Home Assistant access
@@ -241,7 +241,7 @@ At each start the log prints OK or `DENIED <code>` for the Supervisor and Core c
 
 `/config` inside the add-on is the add-on's own private folder. Home Assistant shows it as `/addon_configs/<id>_charm-crush` in the File editor or Samba add-ons. It is included in HA backups. Other add-ons cannot write to it.
 
-**Moved in 1.0.51.** Older versions kept these files in `/homeassistant/.crushdata/`. On the first start after updating, the add-on copies that folder to `/config/crushdata/`, leaves the old copy where it is, and logs what it did (`data migrated`). It never overwrites a file already in the new place and does not copy again. The old copy is no longer read. Delete it once you have checked the new one. Edit your env file, crushrc and tmux.conf in the new place from now on.
+If `/homeassistant/.crushdata/` exists and `/config/crushdata/` does not have those files yet, the add-on copies them over at start and logs `data migrated`. An existing file in `/config/crushdata/` is never overwritten.
 
 ## Security notes
 
@@ -249,7 +249,7 @@ At each start the log prints OK or `DENIED <code>` for the Supervisor and Core c
 - **Crush holds a manager-level Home Assistant token and any MCP tokens in its environment.** Anything Crush runs can read them. Treat prompts, web pages and files you give it as able to ask for them.
 - The add-on can read and write your whole HA config folder, and read `/ssl` and `/backup`. That includes secrets and backups.
 - The central config and Crush updates are used only when they match a hash you set yourself.
-- The Crush config, `env` and `tmux.conf` run as root here. They live in the add-on's private `/config` folder, which other add-ons cannot write. (Before 1.0.51 they were in the shared HA config folder.)
+- The Crush config, `env` and `tmux.conf` run as root here. They live in the add-on's private `/config` folder, which other add-ons cannot write.
 - Keys are saved under `/config/crushdata/`, so they are in HA backups. Protect backups and rotate a key if one leaks.
 - Keys and the `disti_token` are hidden in the Configuration form. `mcp_servers` is not, so use `token_url` there.
 - Log lines show a URL without any `user:password@` part or `?query`.
@@ -279,7 +279,7 @@ The copy helpers load even when `touch_bar` is off. Silent copying needs the pag
 | Log says `has lines that were SKIPPED` | The env file has a line the add-on will not read. | Check the name against [the list](#environment-variables-and-the-env-file) and the value rules. |
 | Log says `central config NOT fetched` or `HASH MISMATCH` | `crush_config_url` is `http://`, `crush_config_sha256` is missing, or the file changed. | Fix the option, or update `crush_config_sha256` to the new file's hash. The last good config stays in use. |
 | Log says `auto_update_crush is on but ... missing` | The update needs a version and a hash. | Set `crush_update_version` and `crush_update_sha256`, or turn the update off. |
-| Log says `data migrated` | First start after updating to 1.0.51. | Check the new folder, then delete the old `/homeassistant/.crushdata`. |
+| Log says `data migrated` | Files from `/homeassistant/.crushdata/` were copied to `/config/crushdata/`. | Check the new folder, then delete the old one. |
 | Log says `mcp_servers ... skipped` | That entry has a bad name, URL, argument or timeout. | Fix the entry named in the log. |
 | A `401` from an MCP tool | That entry's token is wrong. | Fix the token or `token_url`. |
 | `ha` fails | The token or API is not reachable. | Run `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`. |
