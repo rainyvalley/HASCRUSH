@@ -19,15 +19,17 @@ configuration:
   local_ollama_url:
     name: LAN Ollama URL
     description: >-
-      Base URL of your local Ollama (OpenAI-compatible /v1). Used for the
-      local/vision models when provider = ollama.
+      Base URL of your local Ollama (OpenAI-compatible /v1). Adds the
+      ollama-local provider when provider = ollama; its models reach the
+      in-terminal picker through discovery. Leave empty to keep the add-on
+      cloud-only.
   crush_large_model:
     name: Default (Daily) Model
     description: >-
-      Picklist of the models this add-on release knows (registration ids in
-      provider/model form). For anything else - LAN Ollama tags or other
-      catalog ids - use Custom Daily Model below, which wins when set. The
-      in-terminal picker (Ctrl+L) always
+      Picklist of the Ollama Cloud models this add-on release knows
+      (registration ids in provider/model form); it never lists local models.
+      For a LAN Ollama tag or another catalog id, use Custom Daily Model
+      below, which wins when set. The in-terminal picker (Ctrl+L) always
       lists every discovered model; restart the add-on to refresh discovery.
   crush_large_model_custom:
     name: Custom Daily Model (overrides)

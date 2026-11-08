@@ -43,6 +43,17 @@ RUN="$REPO/charm-crush/rootfs/run.sh"
   grep -qF 'crush_large_model: "ollama-cloud/deepseek-v4.1-flash:1017"' "$CFG"
 }
 
+@test "the model picklists name no local model and the local URL defaults blank" {
+  CFG="$REPO/charm-crush/config.yaml"
+  # LAN Ollama tags differ per install: the picklists stay cloud-only, and a
+  # local tag is set through the matching *_custom field instead.
+  for slot in large small deep; do
+    ! grep -qE "^  crush_${slot}_model: list\\(.*ollama-local/" "$CFG"
+    grep -qF "  crush_${slot}_model_custom: \"\"" "$CFG"
+  done
+  grep -qF '  local_ollama_url: ""' "$CFG"
+}
+
 @test "a build push bumps the add-on version automatically" {
   W="$REPO/.github/workflows/version-bump.yml"
   [ -f "$W" ]

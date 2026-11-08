@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.104] - 2026-11-08
+
+### Changed
+- **The model picklists no longer offer a local model.** `ollama-local/...`
+  entries depended on whatever a particular LAN Ollama server happened to
+  serve, so a fresh install was shown a model it could not use. The Daily,
+  Helper and Deep picklists now list Ollama Cloud models only, and
+  `local_ollama_url` stays empty by default. To use a LAN model, set it in the
+  matching **Custom** field (for example `ollama-local/qwen3-vl:4b-instruct`);
+  the Custom fields are blank by default and still win over the picklists.
+  A configured LAN server's whole catalog still appears in the in-terminal
+  picker (Ctrl+L) through model discovery.
+- **Upgrading:** if a saved Daily/Helper/Deep option was
+  `ollama-local/qwen3-vl:4b-instruct`, move that value to the matching Custom
+  field (or pick a cloud model) — the saved value is no longer one of the
+  add-on's known options.
+
 ## [1.0.103] - 2026-11-07
 
 ### Changed

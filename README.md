@@ -49,7 +49,7 @@ Set these in the add-on's **Configuration** tab. Most changes apply when you res
 | `provider` | `ollama` | `ollama` for Ollama Cloud (and a LAN server). `third_party` for any OpenAI-compatible service. |
 | `ollama_api_key` | empty | Your Ollama Cloud key. Hidden in the form. Wins over `ollama_key_url`. |
 | `ollama_key_url` | empty | A URL that returns one line, `OLLAMA_API_KEY=...`. Used when `ollama_api_key` is empty. |
-| `local_ollama_url` | empty | Your own Ollama server, for example `http://my-host:11434/v1`. Adds the `ollama-local` provider and a local vision model. |
+| `local_ollama_url` | empty | Your own Ollama server, for example `http://my-host:11434/v1`. Adds the `ollama-local` provider; its models reach the in-terminal picker through discovery. Leave empty to keep the add-on cloud-only. |
 | `third_party_base_url` | empty | With `third_party`: the service URL, for example `https://openrouter.ai/api/v1`. |
 | `third_party_api_key` | empty | With `third_party`: its key. Hidden in the form. |
 | `disti_token` | empty | A password sent as an `X-Disti-Token` header when fetching `ollama_key_url` or an MCP `token_url`, for config servers that need it. Hidden in the form. |
@@ -68,6 +68,8 @@ Set these in the add-on's **Configuration** tab. Most changes apply when you res
 | `crush_discover_models` | `true` | Add every model your providers offer to the picker. Turn off to show only models listed in the config. |
 
 A model id looks like `provider/model`, with letters, digits and `. _ : / @ + -` only.
+
+The picklists name Ollama Cloud models only. A LAN Ollama tag depends on what your server serves, so it is never in them: put it in the matching **Custom** field, for example `ollama-local/qwen3-vl:4b-instruct`. The Custom fields are blank by default, and `local_ollama_url` is blank by default too, so an install with no LAN server has no local models anywhere in the Configuration tab.
 
 The three slots default to `ollama-cloud/deepseek-v4.1-flash:1017`. A one-time migration writes `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL` and `CRUSH_DEEP_MODEL` into `/config/crushdata/env`, and those values outrank the Configuration tab. Edit or remove those lines to choose another model. A `CRUSH_*` value already present there is not touched.
 

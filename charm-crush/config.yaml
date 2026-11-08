@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI coding agent in your Home Assistant sidebar. Uses your Ollama or OpenAI-compatible models, with optional MCP tool servers.
-version: "1.0.103"
+version: "1.0.104"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:
@@ -33,10 +33,12 @@ options:
   crush_config_url: ""   # optional: URL of a shared crushrc, fetched each start (needs crush_config_sha256)
   crush_config_sha256: ""   # sha256 the fetched crushrc must match
   crush_config_allow_http: false   # true = accept an http:// crush_config_url
-  # Model slots: picklists of the models this repo knows about. Anything else
-  # (LAN Ollama tags, other cloud catalog ids) goes in the matching *_custom
-  # field, which wins when non-empty. The in-TUI picker (Ctrl+L) always lists
-  # every DISCOVERED model regardless of these defaults.
+  # Model slots: picklists of the cloud models this repo knows about. No local
+  # model is listed - a LAN server's tags differ per install - so a local tag
+  # goes in the matching *_custom field (blank by default), which wins when
+  # non-empty. local_ollama_url is blank by default too; when it points at a
+  # server, that server's whole catalog reaches the in-TUI picker (Ctrl+L)
+  # through discovery, whatever the defaults here say.
   crush_large_model: "ollama-cloud/deepseek-v4.1-flash:1017"
   crush_large_model_custom: ""
   crush_small_model: "ollama-cloud/deepseek-v4.1-flash:1017"
@@ -71,11 +73,11 @@ schema:
   crush_config_url: str?
   crush_config_sha256: str?
   crush_config_allow_http: bool
-  crush_large_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
+  crush_large_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b)
   crush_large_model_custom: str?
-  crush_small_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
+  crush_small_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b)
   crush_small_model_custom: str?
-  crush_deep_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b|ollama-local/qwen3-vl:4b-instruct)
+  crush_deep_model: list(ollama-cloud/deepseek-v4.1-flash:1017|ollama-cloud/deepseek-v4.1-flash|ollama-cloud/glm-5.3-flash|ollama-cloud/glm-5.3|ollama-cloud/kimi-k3|ollama-cloud/gemma4:31b)
   crush_deep_model_custom: str?
   crush_reasoning_effort: list(low|high|max)?
   crush_discover_models: bool
