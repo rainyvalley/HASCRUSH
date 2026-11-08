@@ -268,8 +268,11 @@ mcp_sanitize() {
         if [ "$_mcp_sz_open" = "1" ] && [ "$_mcp_sz_prev_bs" = "1" ]; then
           # continuation line: join onto the previous kept line (the
           # previous backslash was a seamless wrap - e.g. a token split
-          # mid-word like "TCP:192." / "168.1.252:3010")
-          _mcp_sz_last=$(tail -1 "$_mcp_sz_tmp" | sed 's/[[:space:]]*\\$//')
+          # mid-word like "TCP:192." / "168.1.252:3010"). Trailing whitespace
+          # AFTER the backslash is stripped too: the continuation detector
+          # above accepts "\ ", so the join must consume the same form or the
+          # joined token keeps a literal backslash and a space in the middle.
+          _mcp_sz_last=$(tail -1 "$_mcp_sz_tmp" | sed 's/[[:space:]]*\\[[:space:]]*$//')
           sed -i '$d' "$_mcp_sz_tmp"
           printf '%s%s\n' "$_mcp_sz_last" "$_mcp_line" >> "$_mcp_sz_tmp"
         else
@@ -277,7 +280,11 @@ mcp_sanitize() {
           printf '%s\n' "$_mcp_line" >> "$_mcp_sz_tmp"
         fi ;;
     esac
-    case "$(printf '%s' "$_mcp_line" | sed 's/[[:space:]]*$//')" in
+    # pure-bash trailing-whitespace trim: `##*[![:space:]]` leaves exactly the
+    # trailing run, so the %-removal gives what the old per-line sed call did -
+    # without a fork for every line of the rc on every boot.
+    _mcp_trimmed="${_mcp_line%"${_mcp_line##*[![:space:]]}"}"
+    case "$_mcp_trimmed" in
       *'\') _mcp_sz_prev_bs=1 ;;
       *) _mcp_sz_prev_bs=0 ;;
     esac

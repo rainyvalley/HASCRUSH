@@ -80,7 +80,7 @@ jobs:
           [ -n "$EXPECTED" ] || { echo 'no checksum entry for hadolint-Linux-x86_64'; exit 1; }
           echo "${EXPECTED}  /tmp/hadolint" | sha256sum -c - || exit 1
           chmod +x /tmp/hadolint
-          # the .hadolint.yaml documents (and justifies) the three waived rules
+          # the .hadolint.yaml documents (and justifies) the four waived rules
           /tmp/hadolint --config charm-crush/.hadolint.yaml charm-crush/Dockerfile
 
       - name: actionlint (workflow)

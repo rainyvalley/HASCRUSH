@@ -34,7 +34,7 @@ configuration:
     description: >-
       Optional free-form model id (provider/model). When non-empty it wins
       over the Default (Daily) Model picklist. Examples:
-      ollama-local/qwen3:14b or ollama-cloud/<model-id>.
+      ollama-local/qwen3-vl:4b-instruct or ollama-cloud/<model-id>.
   crush_small_model:
     name: Helper (Small) Model
     description: >-
@@ -192,7 +192,8 @@ configuration:
   crush_update_version:
     name: Crush version to install
     description: >-
-      One exact release number, for example 0.98.0. Used only with
+      One exact release number, newer than the built-in Crush, for example
+      0.101.0. Used only with
       Auto-update Crush. A version that is not newer than the built-in one is
       ignored.
   crush_update_sha256:

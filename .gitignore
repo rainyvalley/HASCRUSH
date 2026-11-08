@@ -4,3 +4,6 @@
 .crush/
 # Python bytecode from the release-pin scripts
 __pycache__/
+# Local pre-change backups (e.g. Dockerfile.bak kept while bumping a pin):
+# working files, never part of the add-on build.
+*.bak

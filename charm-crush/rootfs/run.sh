@@ -698,14 +698,19 @@ fi
 # mcp_servers JSON did NOT just wire a fresh mem0 entry (that entry wins;
 # scrubbing here would delete the new line, see 1.0.15 sim test).
 LEGACY_MEM0_URL=$(jq -r '.mem0_mcp_url // ""' /data/options.json)
-MCP_HAS_MEM0=0
-if [ "$MCP_JSON_VALID" = 1 ]; then
-  # jq -e alone exits 0 on an empty stream, so grep the output instead
-  echo "$MCP_JSON" | jq -c '.[] | select(.name == "mem0")' 2>/dev/null | grep -q . && MCP_HAS_MEM0=1
-fi
-if [ -n "$LEGACY_MEM0_URL" ] && [ "$MCP_HAS_MEM0" != "1" ]; then
-  echo "[addon][NOTICE] mem0_mcp_url option is retired - add a \"mem0\" entry to the mcp_servers JSON (url + token_url/token); removing any stale mem0 line"
-  mcp_remove mem0
+# The option is gone from config.yaml, so this is "" for every current install
+# and the scan below is only worth a jq spawn when a legacy value survived in
+# the Supervisor's saved options (an upgrade from pre-1.0.15).
+if [ -n "$LEGACY_MEM0_URL" ]; then
+  MCP_HAS_MEM0=0
+  if [ "$MCP_JSON_VALID" = 1 ]; then
+    # jq -e alone exits 0 on an empty stream, so grep the output instead
+    echo "$MCP_JSON" | jq -c '.[] | select(.name == "mem0")' 2>/dev/null | grep -q . && MCP_HAS_MEM0=1
+  fi
+  if [ "$MCP_HAS_MEM0" != "1" ]; then
+    echo "[addon][NOTICE] mem0_mcp_url option is retired - add a \"mem0\" entry to the mcp_servers JSON (url + token_url/token); removing any stale mem0 line"
+    mcp_remove mem0
+  fi
 fi
 # Tokens referenced by generated mcp lines ride the environment into crush's
 # runtime (with S6_KEEP_ENV=1 they survive s6 exec); the crushrc only carries
@@ -729,8 +734,6 @@ if [ "$TP_ACTIVE" = 1 ]; then
   LARGE_MODEL=$(tp_model_id "$LARGE_MODEL" "$TPID")
   SMALL_MODEL=$(tp_model_id "$SMALL_MODEL" "$TPID")
   DEEP_MODEL=$(tp_model_id "$DEEP_MODEL" "$TPID")
-fi
-if [ "$TP_ACTIVE" = 1 ]; then
   # the picklist defaults name models that exist on Ollama Cloud, not on the
   # third-party service
   for _s in "$LARGE_MODEL" "$SMALL_MODEL"; do
@@ -877,7 +880,7 @@ if [ "$AUTO_UPDATE" = "true" ]; then
       echo "[addon][WARN] crush update $NEW_VER download failed (or unsupported CPU) - keeping the built-in crush"
     fi
     rm -rf "$UNPACK" 2>/dev/null || true
-    rm -f /tmp/crush.upd /tmp/crush.chk /tmp/crush.prev /usr/local/bin/crush.new
+    rm -f /tmp/crush.upd /tmp/crush.prev /usr/local/bin/crush.new
   fi
   unset NEW_VER UPD_SHA A ARCH UPD UNPACK BUILT_NUM
 fi

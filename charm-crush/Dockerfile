@@ -90,7 +90,8 @@ RUN set -eux; \
       echo "WARNING: ttyd client page extraction failed - the touch bar will be unavailable"; \
     fi
 
-# Install Crush. Pinned to a fixed release (supply-chain, 2026-10-06): the
+# Install Crush. Pinned to a fixed release (supply-chain; bumped by
+# update-pins.yml, hand-bumped 2026-11-07 to 0.100.0): the
 # version no longer auto-resolves to "latest" — updates are explicit ARG
 # bump commits (the auto_update_crush add-on option remains the runtime path
 # for newer versions). The tarball is verified against the release's own
@@ -99,7 +100,7 @@ RUN set -eux; \
 # Asset naming: crush_<ver>_Linux_<arch>.tar.gz with the binary at
 # crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine packages
 # (arch names x86_64/aarch64) — an alternative install path.
-ARG CRUSH_VERSION=0.99.0
+ARG CRUSH_VERSION=0.100.0
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
         amd64) CRUSH_ARCH="x86_64" ;; \

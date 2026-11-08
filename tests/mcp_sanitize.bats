@@ -78,3 +78,14 @@ EOF
   grep -qF 'mcp add mem0' "$crushrc"   # head survives, \r stripped
   grep -qF 'model large glm' "$crushrc"
 }
+@test "mcp_sanitize treats 'backslash + trailing spaces' as a continuation" {
+  # the continuation detector trims trailing whitespace before asking whether
+  # the line ends with '\'; without that trim a rc whose entry was saved with
+  # '\ ' (backslash then indentation/space) splits mid-token on every boot
+  printf 'mcp add cad --args TCP:192.0.2.\\ \n7:3010\nmodel large glm\n' > "$crushrc"
+  mcp_sanitize
+  diff -u "$crushrc" - <<'EOF'
+mcp add cad --args TCP:192.0.2.7:3010
+model large glm
+EOF
+}

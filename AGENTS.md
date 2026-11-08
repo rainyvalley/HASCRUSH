@@ -24,7 +24,7 @@ repository.json    # HA add-on repository descriptor
 .github/workflows/ci.yml
 ```
 
-`rootfs/lib.sh` holds everything that can be tested without a running add-on: string-or-file in, string-or-exit-code out, no network, no `/data` reads. It is copied next to `run.sh` in the image (`/usr/local/bin/lib.sh`) and sourced by it. Contents: the env-file grammar (`ENV_PAT`), the env-file name allow-list and filter (`env_name_ok`, `env_file_clean`), URL redaction (`redact_url`) and curl redirect limits (`curl_guard`), charset validators (`safe_url`, `safe_text`, `val_check`), CRUSH.md guardrail injection, crushrc surgery (`mcp_remove`, `mcp_sanitize`), the `mcp_servers` entry parser (`mcp_parse_entry`), MCP token variable naming and collision detection (`mcp_token_var`, `mcp_token_claim`), model slot rewiring, and the third-party provider remap/reset. New logic that can be pure belongs in lib.sh with a bats test, not inline in run.sh.
+`rootfs/lib.sh` holds everything that can be tested without a running add-on: string-or-file in, string-or-exit-code out, no network, no `/data` reads. It is copied next to `run.sh` in the image (`/usr/local/bin/lib.sh`) and sourced by it. Contents: the env-file grammar (`ENV_PAT`), the env-file name allow-list and filter (`env_name_ok`, `env_file_clean`), URL redaction (`redact_url`) and curl redirect limits (`curl_guard`), charset validators (`safe_url`, `safe_text`, `safe_model_id`, `val_check`), CRUSH.md guardrail injection (`inject_limits`), crushrc surgery (`mcp_remove`, `mcp_sanitize`), the `mcp_servers` entry parser (`mcp_parse_entry`) and its `--args` fragment (`mcp_arg_fragment`), MCP token variable naming and collision detection (`mcp_token_var`, `mcp_token_claim`), model slot rewiring (`apply_model_slot`, `register_deep_model`, `apply_reasoning_effort`, `discover_models_apply`), the third-party provider remap/reset (`provider_remap`, `provider_reset`, `tp_model_id`), sha256 and version helpers (`is_sha256`, `file_sha256`, `sha256_matches`, `version_gt`), the ttyd and ingress-gate argv (`ttyd_args`, `ingress_gate_args`), touch-bar page injection (`touchbar_inject`, `touchbar_offset_clamp`), and the one-time data move (`persist_migrate`). New logic that can be pure belongs in lib.sh with a bats test, not inline in run.sh.
 
 MCP token variables: each `mcp_servers` entry's token is exported as `MCP_TOKEN_<name>` with `-` mapped to `_` (`home-assistant` -> `MCP_TOKEN_home_assistant`). Names that map to the same variable (`a-b` / `a_b`) collide; the later token-bearing entry is skipped with a warning.
 
@@ -52,9 +52,13 @@ EOF
 Full image build (CI builds both arches with buildx + QEMU; slow):
 
 ```bash
-docker buildx build --platform linux/amd64 --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.21 \
+docker buildx build --platform linux/amd64 --load \
+  --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.21 \
   --build-arg BUILD_ARCH=amd64 -t charm-crush:amd64 charm-crush/
 ```
+
+(`--load` is what puts the result in the local image store for a smoke run; CI
+uses `--cache-from/--cache-to` with the gha backend instead.)
 
 Local CI validation needs `pyyaml` (pip install).
 
@@ -111,7 +115,7 @@ Key precedence everywhere: **real environment > env file (/config/crushdata/env)
 
 ## The related LAN fleet (context, not part of this repo)
 
-The author runs a crush fleet managed from a separate installer (`/srv/crush/install-crush.sh` on a LAN host, served over HTTP at :8887): `install-crush.sh` installs crush+tmux on bare machines, fetches the central crushrc template, syncs the Ollama Cloud key (`ollama.key` URL) and mem0/vision MCP tokens, and installs a daily `crush-update.timer` systemd unit. Notable bugs fixed there (do not reintroduce): systemd unit `User=` must be the *installing* user, not hardcoded root (a root User= on a machine installed by a non-root user makes the daily timer fail with "No crushrc yet"); crush creates a per-working-directory `.crush/crush.db` sqlite db on first agent run, so running crush in a dir whose `.crush/` belongs to another user fails with `Failed to connect to database: unable to open database file (14)` (fix: `chown -R` the dir or run from elsewhere).
+The author runs a crush fleet managed from a separate installer (`/srv/crush/install-crush.sh` on a LAN host, served over HTTP at :8887): `install-crush.sh` installs crush+tmux on bare machines, fetches the central crushrc template, syncs the Ollama Cloud key (`ollama.key` URL) and mem0/vision MCP tokens, and installs a daily `crush-update.timer` systemd unit. Notable bugs fixed there (do not reintroduce): systemd unit `User=` must be the *installing* user, not hardcoded root (a root User= on a machine installed by a non-root user makes the daily timer fail with "No crushrc yet"); crush creates a per-working-directory `.crush/crush.db` sqlite db on first agent run, so running crush in a dir whose `.crush/` belongs to another user fails with `Failed to connect to database: unable to open database file (14)` (fix: `chown -R` the dir or run from elsewhere). The fleet's LAN Ollama currently serves only two models - `nomic-embed-text` (embeddings) and `qwen3-vl:4b-instruct` (chat/vision) - so any doc, translation or picklist example naming another LAN tag (`qwen3:14b`, `llama*`, ...) is stale: `ollama-local/qwen3-vl:4b-instruct` is the only local chat model to point at.
 
 ## Related live memory
 

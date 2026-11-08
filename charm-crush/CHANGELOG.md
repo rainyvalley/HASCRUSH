@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.103] - 2026-11-07
+
+### Changed
+- **Bundled Crush is now 0.100.0** (up from 0.99.0). It can run a team of
+  background subagents (message them, or move one to another model mid-run),
+  adds a Sysadmin mode, lets you make the dangerous-command list your own with
+  `permissions safe` / `permissions block`, and asks for PGP and SSH
+  passphrases inside Crush. The generated config was re-checked against
+  0.100.0: `provider add --type openai-compat`, `--can-reason`,
+  `--reasoning-effort`, `--discover-models` and `mcp add` all still load.
+  The docs now state what its Yolo/Sysadmin modes do and do not relax: they
+  skip Crush's own prompts and block list, not the container boundary.
+- ttyd **1.7.7**, the Home Assistant CLI **5.6.0** and the Alpine **3.21** base
+  images were re-checked upstream and are still the current releases, so no
+  other pinned version moved.
+
+### Fixed
+- The documentation had the option precedence backwards (the real container
+  environment wins over the env file, not the other way round).
+- The `crush_update_version` examples named `0.98.0`, which is older than the
+  Crush built into this release and would therefore be ignored.
+- A `crush_large_model_custom` example named `ollama-local/qwen3:14b`, a LAN
+  model tag that no longer exists; it now points at
+  `ollama-local/qwen3-vl:4b-instruct`.
+
 ## [1.0.102] - 2026-11-04
 
 ### Build

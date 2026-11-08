@@ -99,7 +99,7 @@ The three slots default to `ollama-cloud/deepseek-v4.1-flash:1017`. A one-time m
 | Option | Default | What it does |
 |---|---|---|
 | `auto_update_crush` | `false` | Install the Crush release you name below. Needs both of the next two options. |
-| `crush_update_version` | empty | One exact release, for example `0.98.0`. It is installed only if it is newer than the Crush built into the add-on. Older or equal versions are ignored. |
+| `crush_update_version` | empty | One exact release newer than the Crush built into the add-on, for example `0.101.0`. Older or equal versions are ignored. |
 | `crush_update_sha256` | empty | The SHA-256 of that release's file `crush_<version>_Linux_<x86_64 or arm64>.tar.gz`, from the release's `checksums.txt`. The download is used only if it matches. |
 
 If a check or download fails, the built-in Crush is kept and the log says why.
@@ -184,7 +184,7 @@ If the file has a line `# config-version: N` and the same folder serves `config.
 
 ## Environment variables and the env file
 
-You can set options from the environment instead of the Configuration tab. The order of precedence is: the env file, then the real container environment, then the Options tab.
+You can set options from the environment instead of the Configuration tab. The order of precedence is: the real container environment, then the env file, then the Options tab.
 
 | Variable | Same as option |
 |---|---|
@@ -254,6 +254,7 @@ If `/homeassistant/.crushdata/` exists and `/config/crushdata/` does not have th
 - Keys and the `disti_token` are hidden in the Configuration form. `mcp_servers` is not, so use `token_url` there.
 - Log lines show a URL without any `user:password@` part or `?query`.
 - The add-on has a custom AppArmor profile, no `full_access`, no Docker API and no host networking. Toggling **Protection mode** for this one add-on is the way out if a task needs more reach.
+- Crush's own permission modes (Yolo `-y`, Sysadmin `-yy`, or the mode switch in the TUI) relax *Crush's* prompts and its command block list only. The container boundary — no Docker socket, the AppArmor profile, the Supervisor **manager** role — still applies.
 - ttyd, Crush and the `ha` command are pinned versions checked by sha256 when the image is built.
 
 ## Copy and paste
