@@ -17,7 +17,7 @@ This repository holds one add-on, in this folder.
 - **Sessions survive.** Close the tab or lose the connection and your session is still there when you come back.
 - **MCP servers (optional).** Connect memory, vision, search or other tool servers from one Options field.
 - **Shared config (optional).** Several machines can read one Crush config from a URL.
-- **Touch bar (optional).** On a phone or tablet, an on-screen row of keys (Ctrl, Alt, Tab, Esc, Del, Copy, Paste).
+- **Touch bar (optional).** On a phone or tablet, an on-screen row of keys (Shift, Ctrl, Alt, Tab, Esc, Del, Copy, Paste). The row stays on one line: if the keys are wider than the screen, swipe the bar sideways to reach them all.
 - **Home Assistant access.** The `ha` command is installed and Crush can call the Home Assistant API.
 - **Crush updates (optional, off by default).** Crush can update itself when the add-on starts.
 - **Pinned builds stay current.** A weekly job moves Crush, ttyd and the Home Assistant CLI

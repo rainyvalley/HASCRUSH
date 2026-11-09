@@ -1,11 +1,16 @@
 /* HASSCrush touch bar - injected into ttyd's custom index page (ttyd --index).
  * A fixed bar at the bottom of the web terminal for touch devices:
- *   sticky: Ctrl / Alt / Tab (latch; the next input event composes them,
- *           then they auto-disarm; tapping a latched key again disarms early)
+ *   sticky: Shift / Ctrl / Alt / Tab (latch; the next input event composes
+ *           them, then they auto-disarm; tapping a latched key again disarms
+ *           early). Shift uppercases a plain key, adds the CSI modifier bit to
+ *           arrow/function/tilde keys, and makes latched Tab send Shift+Tab.
  *   momentary: Esc / Del (synthetic keydowns, so xterm.js computes the same
  *           mode-aware sequences a physical key would) / Paste (clipboard.
  *           Falls back to a paste-into-box dialog when the Clipboard API is
  *           unavailable, e.g. plain-http ingress).
+ * The row never wraps: when the keys are wider than the screen the whole bar
+ * scrolls sideways (a horizontal swipe), so more keys can be added without
+ * stealing a second row from the terminal.
  * Always on (touch or desktop, bar or not): the clipboard helpers. ttyd 1.7.x
  * ships no OSC 52 handler, so a copy from tmux or from Crush itself (both emit
  * OSC 52) was silently discarded; here OSC 52 becomes a real clipboard write,
@@ -54,9 +59,11 @@
   var BAR_H = 44;
 
   /* Floating pill styling: no full-width backdrop strip - the bar element is
-   * transparent and click-through outside the buttons, so nothing dark sits
+   * transparent and the area between the pills is inert, so nothing dark sits
    * between the terminal and the keyboard; each key is a compact translucent
-   * pill that stays legible over terminal text. */
+   * pill that stays legible over terminal text. The bar itself takes pointer
+   * events (the terminal ends above it) so the whole row can be swiped
+   * sideways when it is wider than the screen. */
   var COLORS = THEME === 'light'
     ? { pill: 'rgba(239,241,245,0.88)', fg: '#4c4f69', fgDim: 'rgba(76,79,105,0.70)',
         press: 'rgba(76,79,105,0.14)', hair: 'rgba(76,79,105,0.14)',
@@ -68,9 +75,9 @@
         card: 'rgba(30,30,46,0.96)' };
 
   /* ── latch state ───────────────────────────────────────────────────── */
-  var sticky = { ctrl: false, alt: false, tab: false };
-  function latchAny() { return sticky.ctrl || sticky.alt || sticky.tab; }
-  function latchClear() { sticky.ctrl = sticky.alt = sticky.tab = false; }
+  var sticky = { shift: false, ctrl: false, alt: false, tab: false };
+  function latchAny() { return sticky.shift || sticky.ctrl || sticky.alt || sticky.tab; }
+  function latchClear() { sticky.shift = sticky.ctrl = sticky.alt = sticky.tab = false; }
 
   /* The next frame is expected through compose() untouched (paste bursts,
    * self-firing tab) - latches survive it. */
@@ -94,7 +101,7 @@
     if (p.length < 3 || p[0] !== 0x1b || p[1] !== 0x5b) return null;
     var last = p[p.length - 1];
     if (last < 0x40 || last > 0x7e) return null;
-    var code = 1 + (sticky.alt ? 2 : 0) + (sticky.ctrl ? 4 : 0);
+    var code = 1 + (sticky.shift ? 1 : 0) + (sticky.alt ? 2 : 0) + (sticky.ctrl ? 4 : 0);
     var mid = [];
     for (var i = 2; i < p.length - 1; i++) {
       var c = p[i];
@@ -121,13 +128,32 @@
     return out;
   }
 
+  /* US-layout Shift for a plain printable byte: the soft keyboard sends the
+   * unshifted character, so a latched Shift must produce the character a
+   * physical Shift would. Anything outside the map is left alone. */
+  var SHIFT_MAP = {
+    0x60: 0x7e, 0x2d: 0x5f, 0x3d: 0x2b, 0x5b: 0x7b, 0x5d: 0x7d,
+    0x5c: 0x7c, 0x3b: 0x3a, 0x27: 0x22, 0x2c: 0x3c, 0x2e: 0x3e, 0x2f: 0x3f
+  };
+  function shiftChar(b) {
+    if (b >= 0x61 && b <= 0x7a) return b - 0x20;            /* a-z -> A-Z */
+    if (b >= 0x30 && b <= 0x39) return ')!@#$%^&*('.charCodeAt(b - 0x30);
+    var m = SHIFT_MAP[b];
+    return m === undefined ? b : m;
+  }
+
   /* Apply latched modifiers to one input payload (bytes WITHOUT the 0x30). */
   function compose(p) {
     var out = [];
     var i;
-    if (sticky.tab) out.push(0x09);
+    if (sticky.tab) {
+      /* Shift+Tab is its own sequence (CSI Z), not a modified 0x09. */
+      if (sticky.shift) out.push(0x1b, 0x5b, 0x5a);
+      else out.push(0x09);
+    }
     var isPlain = p.length === 1 && p[0] >= 0x20 && p[0] <= 0x7e;
     var isCsi = p.length >= 3 && p[0] === 0x1b && p[1] === 0x5b;
+    var b0 = (sticky.shift && isPlain) ? shiftChar(p[0]) : p[0];
     if (isCsi) {
       var enc = csiMod(p);
       if (enc) {
@@ -137,9 +163,10 @@
     }
     if (sticky.alt) out.push(0x1b);
     if (sticky.ctrl && isPlain) {
-      out.push(p[0] === 0x3f ? 0x7f : (p[0] & 0x1f));
+      out.push(b0 === 0x3f ? 0x7f : (b0 & 0x1f));
       return new Uint8Array(out);
     }
+    if (sticky.shift && isPlain) { out.push(b0); return new Uint8Array(out); }
     for (i = 0; i < p.length; i++) out.push(p[i]);
     return new Uint8Array(out);
   }
@@ -181,15 +208,18 @@
     return document.querySelector('.xterm-helper-textarea');
   }
   /* Dispatch a real keydown at xterm's hidden textarea; xterm.js evaluates
-   * the event exactly like a physical key (keymap + keypad mode + modifiers). */
-  function dispatchKey(key, code) {
+   * the event exactly like a physical key (keymap + keypad mode + modifiers).
+   * shiftKey is only used where the socket layer cannot compose it (the Tab
+   * self-fire skips composition to avoid sending Tab twice). */
+  function dispatchKey(key, code, shift) {
     var el = textareaEl();
     if (!el) return false;
     try {
       if (document.activeElement !== el) el.focus();
     } catch (e) { /* ignore */ }
     el.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true, cancelable: true, key: key, code: code
+      bubbles: true, cancelable: true, key: key, code: code,
+      shiftKey: !!shift
     }));
     return true;
   }
@@ -449,16 +479,27 @@
      * above it and the terminal shrinks so no row hides. */
     var css = [
       '#hassbar{position:fixed;left:0;right:0;bottom:var(--hassbar-shift, 0px);z-index:9998;',
-      'display:flex;align-items:center;justify-content:center;gap:6px;',
+      /* One row, never wrapped. When the keys are wider than the screen the
+       * row scrolls sideways (pan-x) instead of wrapping onto a second line;
+       * auto margins centre the keys while they fit and collapse to 0 once
+       * they overflow, so the first key stays reachable. The scrollbar is
+       * hidden - the bar keeps its 44px height. */
+      'display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;gap:6px;',
+      'overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;',
+      'overscroll-behavior-x:contain;touch-action:pan-x;',
+      'scrollbar-width:none;-ms-overflow-style:none;',
       /* No safe-area reservation: the bar is transparent, so a device inset
        * (env(safe-area-inset-bottom)) showed up as a dark strip between the
        * keys and the keyboard instead of protecting anything. 6px padding
        * only; BAR_H matches this box exactly so the terminal ends at the
        * keys. */
       'padding:6px 10px 6px;',
-      'background:transparent;border:0;box-shadow:none;pointer-events:none;',
+      'background:transparent;border:0;box-shadow:none;pointer-events:auto;',
       'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;',
       '-webkit-tap-highlight-color:transparent;}',
+      '#hassbar::-webkit-scrollbar{display:none;}',
+      '#hassbar button:first-child{margin-left:auto;}',
+      '#hassbar button:last-child{margin-right:auto;}',
       '#hassbar button{pointer-events:auto;flex:0 0 auto;min-width:40px;min-height:32px;',
       'margin:0;padding:0 10px;border:0;border-radius:999px;',
       'background:' + c.pill + ';color:' + c.fg + ';box-shadow:' + c.shadow + ';',
@@ -493,6 +534,7 @@
   }
 
   var BUTTONS = [
+    { id: 'shift', label: 'Shift', sticky: true,  key: null, code: null },
     { id: 'ctrl',  label: 'Ctrl',  sticky: true,  key: null, code: null },
     { id: 'alt',   label: 'Alt',   sticky: true,  key: null, code: null },
     { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab' },
@@ -539,6 +581,9 @@
         e.preventDefault();
         if (b.action === 'paste') { doPaste(); return; }
         if (b.action === 'copy') { doCopy(); return; }
+        if (b.id === 'shift') {
+          sticky.shift = !sticky.shift; paint(); return;
+        }
         if (b.id === 'ctrl') {
           sticky.ctrl = !sticky.ctrl; paint(); return;
         }
@@ -547,9 +592,11 @@
         }
         if (b.id === 'tab') {
           if (sticky.tab) {
-            /* Tab is its own key: a tap while it is latched fires it once. */
+            /* Tab is its own key: a tap while it is latched fires it once.
+             * skipNext keeps compose() from sending it twice, so a latched
+             * Shift has to ride the synthetic keydown instead. */
             skipNext = true;
-            dispatchKey('Tab', 'Tab');
+            dispatchKey('Tab', 'Tab', sticky.shift);
             latchClear();
             paint();
           } else {
@@ -568,7 +615,7 @@
       bar.appendChild(el);
     });
     paintBar = function () {
-      'ctrl,alt,tab'.split(',').forEach(function (id) {
+      'shift,ctrl,alt,tab'.split(',').forEach(function (id) {
         var el = els[id];
         if (!el) return;
         var on = !!sticky[id];

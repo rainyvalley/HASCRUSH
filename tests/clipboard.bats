@@ -45,6 +45,21 @@ RUN="$ROOT/rootfs/run.sh"
   grep -q "action: 'copy'" "$BAR"
 }
 
+@test "the bar has a Shift key and stays one sideways-scrolling row" {
+  grep -q "{ id: 'shift', label: 'Shift', sticky: true" "$BAR"
+  grep -q "var sticky = { shift: false, ctrl: false, alt: false, tab: false };" "$BAR"
+  grep -q "SHIFT_MAP" "$BAR"
+  grep -q "if (sticky.shift) out.push(0x1b, 0x5b, 0x5a);" "$BAR"
+  grep -q "'shift,ctrl,alt,tab'.split(',')" "$BAR"
+  # overflow: one row, scrolled sideways, scrollbar hidden
+  grep -q "flex-wrap:nowrap" "$BAR"
+  grep -q "overflow-x:auto" "$BAR"
+  grep -q "touch-action:pan-x" "$BAR"
+  grep -q "#hassbar button:first-child{margin-left:auto;}" "$BAR"
+  grep -q "#hassbar button:last-child{margin-right:auto;}" "$BAR"
+  ! grep -q "justify-content:center" "$BAR"
+}
+
 @test "touchbar_inject NOBAR flag adds bar:0 and the default prelude is unchanged" {
   setup_tmp
   printf '<html><body>x</body></html>' > "$TMP/src.html"

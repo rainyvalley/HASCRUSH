@@ -148,11 +148,15 @@ configuration:
     description: >-
       Small key bar at the bottom of the web terminal, shown on touch devices
       only (desktop browsers keep the full terminal):
-      Ctrl, Alt and Tab latch like held keys (the next key pressed composes
+      Shift, Ctrl, Alt and Tab latch like held keys (the next key pressed composes
       them, then they release), while Esc, Delete, Copy and Paste fire immediately.
+      Shift upper-cases the next letter and turns latched Tab into Shift+Tab.
       The bar floats above the on-screen keyboard so it stays reachable while
-      typing. Copy copies the selection (or opens a text box); Paste reads the browser clipboard; on a plain-HTTP connection it
-      falls back to a paste-into-box dialog. Applies on add-on restart.
+      typing. It never wraps onto a second row: when the keys are wider than
+      the screen, swipe the bar sideways to reach the rest. Copy copies the
+      selection (or opens a text box); Paste reads the browser clipboard; on a
+      plain-HTTP connection it falls back to a paste-into-box dialog. Applies
+      on add-on restart.
   touch_bar_offset:
     name: Touch Bar Offset (pixels)
     description: >-

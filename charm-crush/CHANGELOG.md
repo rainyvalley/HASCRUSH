@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.105] - 2026-11-09
+
+### Added
+- **Shift key on the touch bar.** It latches like Ctrl/Alt/Tab: the next
+  plain key is upper-cased (or shifted to its symbol), arrow/function/tilde
+  keys get the Shift modifier (`CSI 1;2…`), and Shift plus the Tab key sends
+  Shift+Tab. Tap it again to clear it.
+
+### Changed
+- **The touch bar stays on one row and scrolls sideways.** With Shift added
+  the keys can be wider than a phone screen; the whole bar now swipes left
+  and right instead of wrapping onto a second row, so that row stays with the
+  terminal. The scrollbar is hidden, the keys stay centred while they fit,
+  and the row starts at the first key once it overflows.
+
 ## [1.0.104] - 2026-11-08
 
 ### Changed
