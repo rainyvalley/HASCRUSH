@@ -1,6 +1,6 @@
 name: HASSCrush
 description: Charm Crush AI coding agent in your Home Assistant sidebar. Uses your Ollama or OpenAI-compatible models, with optional MCP tool servers.
-version: "1.0.105"
+version: "1.0.106"
 slug: charm-crush
 url: https://github.com/rainyvalley/HASCRUSH
 arch:

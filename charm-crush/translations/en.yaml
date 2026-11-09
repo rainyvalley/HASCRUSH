@@ -150,7 +150,8 @@ configuration:
       only (desktop browsers keep the full terminal):
       Shift, Ctrl, Alt and Tab latch like held keys (the next key pressed composes
       them, then they release), while Esc, Delete, Copy and Paste fire immediately.
-      Shift upper-cases the next letter and turns latched Tab into Shift+Tab.
+      Shift upper-cases the next letter; Shift plus Tab sends Shift+Tab (Crush's
+      mode switch) on the first tap.
       The bar floats above the on-screen keyboard so it stays reachable while
       typing. It never wraps onto a second row: when the keys are wider than
       the screen, swipe the bar sideways to reach the rest. Copy copies the

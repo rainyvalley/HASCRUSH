@@ -209,18 +209,40 @@
   }
   /* Dispatch a real keydown at xterm's hidden textarea; xterm.js evaluates
    * the event exactly like a physical key (keymap + keypad mode + modifiers).
+   * xterm 5.x switches on event.keyCode (not event.key), and a synthetic
+   * KeyboardEvent has keyCode 0 unless it is set explicitly - a bar key with
+   * no keyCode is silently dropped. keyCode is non-standard in the init
+   * dictionary (Chromium honours it, others ignore it), so it is also defined
+   * on the event instance as a getter.
    * shiftKey is only used where the socket layer cannot compose it (the Tab
    * self-fire skips composition to avoid sending Tab twice). */
-  function dispatchKey(key, code, shift) {
+  function dispatchKey(key, code, keyCode, shift) {
     var el = textareaEl();
     if (!el) return false;
     try {
       if (document.activeElement !== el) el.focus();
     } catch (e) { /* ignore */ }
-    el.dispatchEvent(new KeyboardEvent('keydown', {
-      bubbles: true, cancelable: true, key: key, code: code,
-      shiftKey: !!shift
-    }));
+    var ev;
+    try {
+      ev = new KeyboardEvent('keydown', {
+        bubbles: true, cancelable: true, key: key, code: code,
+        keyCode: keyCode || 0, which: keyCode || 0, shiftKey: !!shift
+      });
+    } catch (e) {
+      ev = new KeyboardEvent('keydown', {
+        bubbles: true, cancelable: true, key: key, code: code,
+        shiftKey: !!shift
+      });
+    }
+    if (keyCode) {
+      try {
+        Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } });
+      } catch (e) { /* ignore */ }
+      try {
+        Object.defineProperty(ev, 'which', { get: function () { return keyCode; } });
+      } catch (e) { /* ignore */ }
+    }
+    el.dispatchEvent(ev);
     return true;
   }
 
@@ -537,9 +559,9 @@
     { id: 'shift', label: 'Shift', sticky: true,  key: null, code: null },
     { id: 'ctrl',  label: 'Ctrl',  sticky: true,  key: null, code: null },
     { id: 'alt',   label: 'Alt',   sticky: true,  key: null, code: null },
-    { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab' },
-    { id: 'esc',   label: 'Esc',   sticky: false, key: 'Escape', code: 'Escape' },
-    { id: 'del',   label: 'Del',   sticky: false, key: 'Delete', code: 'Delete' },
+    { id: 'tab',   label: 'Tab',   sticky: true,  key: 'Tab', code: 'Tab', keyCode: 9 },
+    { id: 'esc',   label: 'Esc',   sticky: false, key: 'Escape', code: 'Escape', keyCode: 27 },
+    { id: 'del',   label: 'Del',   sticky: false, key: 'Delete', code: 'Delete', keyCode: 46 },
     { id: 'copy',  label: 'Copy',  sticky: false, key: null, code: null, action: 'copy' },
     { id: 'paste', label: 'Paste', sticky: false, key: null, code: null, action: 'paste' }
   ];
@@ -591,12 +613,14 @@
           sticky.alt = !sticky.alt; paint(); return;
         }
         if (b.id === 'tab') {
-          if (sticky.tab) {
-            /* Tab is its own key: a tap while it is latched fires it once.
-             * skipNext keeps compose() from sending it twice, so a latched
-             * Shift has to ride the synthetic keydown instead. */
+          if (sticky.tab || sticky.shift) {
+            /* Tab fires once. A latched Shift means the gesture is Shift+Tab
+             * (Crush's mode cycle), so it fires on the FIRST Tab tap too -
+             * requiring a second tap made Shift+Tab look broken. skipNext
+             * keeps compose() from sending it twice, so Shift rides the
+             * synthetic keydown instead. */
             skipNext = true;
-            dispatchKey('Tab', 'Tab', sticky.shift);
+            dispatchKey('Tab', 'Tab', 9, sticky.shift);
             latchClear();
             paint();
           } else {
@@ -606,7 +630,7 @@
         }
         /* Esc / Del: one-shot synthetic keydown; any latches compose at the
          * socket layer with the sequence xterm produces. */
-        dispatchKey(b.key, b.code);
+        dispatchKey(b.key, b.code, b.keyCode);
         paint();
       };
       /* Block focus stealing (clicks must not close the soft keyboard). */

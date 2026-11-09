@@ -51,6 +51,8 @@ RUN="$ROOT/rootfs/run.sh"
   grep -q "SHIFT_MAP" "$BAR"
   grep -q "if (sticky.shift) out.push(0x1b, 0x5b, 0x5a);" "$BAR"
   grep -q "'shift,ctrl,alt,tab'.split(',')" "$BAR"
+  # a latched Shift fires Shift+Tab on the first Tab tap
+  grep -q "if (sticky.tab || sticky.shift)" "$BAR"
   # overflow: one row, scrolled sideways, scrollbar hidden
   grep -q "flex-wrap:nowrap" "$BAR"
   grep -q "overflow-x:auto" "$BAR"
@@ -58,6 +60,17 @@ RUN="$ROOT/rootfs/run.sh"
   grep -q "#hassbar button:first-child{margin-left:auto;}" "$BAR"
   grep -q "#hassbar button:last-child{margin-right:auto;}" "$BAR"
   ! grep -q "justify-content:center" "$BAR"
+}
+
+@test "synthetic bar keys carry the keyCode xterm.js switches on" {
+  # xterm 5.x evaluates ev.keyCode; a KeyboardEvent built without one has
+  # keyCode 0 and is dropped, which silently broke Esc, Del and Shift+Tab.
+  grep -q "keyCode: 9" "$BAR"
+  grep -q "keyCode: 27" "$BAR"
+  grep -q "keyCode: 46" "$BAR"
+  grep -q "Object.defineProperty(ev, 'keyCode'" "$BAR"
+  grep -q "dispatchKey('Tab', 'Tab', 9, sticky.shift);" "$BAR"
+  grep -q "dispatchKey(b.key, b.code, b.keyCode);" "$BAR"
 }
 
 @test "touchbar_inject NOBAR flag adds bar:0 and the default prelude is unchanged" {

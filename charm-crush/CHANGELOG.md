@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.106] - 2026-11-09
+
+### Fixed
+- **Shift+Tab (and Esc/Del) did nothing on the touch bar.** The bar hands
+  xterm.js synthetic key events, and xterm 5.x reads `event.keyCode`; a
+  synthetic event without one has keyCode 0 and is silently ignored. The bar
+  now sets keyCode (and defines it on the event too, for browsers that ignore
+  the non-standard init field), so Esc, Del and Shift+Tab reach the terminal
+  again.
+- **Shift+Tab fires on the first Tab tap.** A latched Tab used to need a
+  second tap to send; with Shift latched, the first Tab tap now sends
+  Shift+Tab straight away - the key Crush listens for to cycle its modes
+  (normal / YOLO / sysadmin).
+
 ## [1.0.105] - 2026-11-09
 
 ### Added
