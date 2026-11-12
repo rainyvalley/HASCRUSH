@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.107] - 2026-11-12
+
+### Security
+- **A mistyped key in the env file can no longer appear in the start-up log.**
+  A line that is not a normal `NAME=value` used to be reported with everything
+  before its first `=`, so a key pasted on its own with base64 padding (or a
+  token with trailing text) put most of that key in the add-on log as if it
+  were a variable name. Such a line is now reported by length only unless its
+  name is one this add-on documents (`CRUSH_*`, `MCP_TOKEN_*`, ...) or a shell
+  name the warning exists to catch (`PATH`, `LD_PRELOAD`, ...); a pasted key is
+  never one of those. Nothing from the env file is executed in either case.
+
 ## [1.0.106] - 2026-11-09
 
 ### Fixed

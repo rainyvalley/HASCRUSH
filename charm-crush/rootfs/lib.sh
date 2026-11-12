@@ -82,11 +82,32 @@ env_name_ok() {
   return 1
 }
 
+# env_report_name NAME [SUFFIX]: describe a rejected line's name without
+# leaking a mistyped secret. Only a conventional environment-variable name
+# (uppercase, as every documented name is) is printed; anything else is
+# reported by length. A key pasted with an `=` in it (base64 padding, a token
+# plus trailing text) parses as `name=value`, so printing that "name" would put
+# most of the key in the boot log - the value-only masking this replaces did
+# exactly that.
+env_report_name() {
+  case "$1" in
+    # Names this add-on documents (or the shell names the warning exists to
+    # catch) are safe to print. A pasted key is never one of these, even when
+    # it is all uppercase: an unrecognised name is reported by length only.
+    PATH|HOME|USER|SHELL|IFS|LD_PRELOAD|BASH_ENV|SUPERVISOR_TOKEN|HA_URL|HASSIO_TOKEN)
+      printf '%s=<masked>%s\n' "$1" "${2:-}" ;;
+    CRUSH_*|MCP_TOKEN_*|THIRD_PARTY_*|OLLAMA_*|DISTI_*)
+      printf '%s=<masked>%s\n' "$1" "${2:-}" ;;
+    *) printf '<name masked, %d characters>=<masked>%s\n' "${#1}" "${2:-}" ;;
+  esac
+}
+
 # env_file_clean SRC DST: write the lines of SRC that match ENV_PAT AND set an
 # allowed name to DST (this is what run.sh sources). Every other content line
 # (blank lines and #-comments are ignored) is described on stdout, one line
 # each, with the value never shown: `NAME=<masked>`, or for a line with no `=`
-# only its length (a bare pasted key must not reach the log).
+# only its length (a bare pasted key must not reach the log). A name that is
+# not a conventional uppercase variable name is masked too (env_report_name).
 env_file_clean() {
   local line trimmed name
   : > "$2"
@@ -100,10 +121,10 @@ env_file_clean() {
       if env_name_ok "$name"; then
         printf '%s\n' "$line" >> "$2"
       else
-        printf '%s=<masked> (name not allowed)\n' "$name"
+        env_report_name "$name" " (name not allowed)"
       fi
     elif [[ $trimmed == *=* ]]; then
-      printf '%s=<masked>\n' "${trimmed%%=*}"
+      env_report_name "${trimmed%%=*}"
     else
       printf '<%d characters, no "=">\n' "${#trimmed}"
     fi

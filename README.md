@@ -1,7 +1,7 @@
 # HASSCrush
 
 <p align="center">
-  <img src="logo.png" alt="Crush" width="520">
+  <img src="charm-crush/logo.png" alt="Crush" width="520">
 </p>
 
 HASSCrush puts [Charm Crush](https://github.com/charmbracelet/crush), a terminal AI coding agent, in your Home Assistant sidebar. It talks to your own models (Ollama Cloud, an Ollama server on your network, or any OpenAI-compatible service) and can use MCP tool servers such as a memory server.
@@ -13,7 +13,7 @@ This repository holds one add-on, in this folder.
 ## What it does
 
 - **Terminal in the sidebar.** Click **HASSCrush** in the sidebar. You get a shell with Crush ready to run. Home Assistant's own login protects it.
-- **Your models.** Use Ollama Cloud, an Ollama server on your network, or a service such as OpenRouter or OpenAI.
+- **Your models.** Use Ollama Cloud, a service such as OpenRouter or OpenAI, or your own Ollama server alongside Ollama Cloud.
 - **Sessions survive.** Close the tab or lose the connection and your session is still there when you come back.
 - **MCP servers (optional).** Connect memory, vision, search or other tool servers from one Options field.
 - **Shared config (optional).** Several machines can read one Crush config from a URL.
@@ -27,7 +27,7 @@ This repository holds one add-on, in this folder.
 ## What you need
 
 - Home Assistant OS or a supervised install (anything that runs add-ons).
-- One model source: an Ollama Cloud API key, an Ollama server you can reach, or an OpenAI-compatible API key.
+- One model source: an Ollama Cloud API key, or an OpenAI-compatible API key with **provider** set to `third_party`. A LAN Ollama server set in **local_ollama_url** is added next to Ollama Cloud; it does not replace the cloud key.
 
 ## Install
 
@@ -198,14 +198,15 @@ You can set options from the environment instead of the Configuration tab. The o
 | `CRUSH_LARGE_MODEL`, `CRUSH_SMALL_MODEL`, `CRUSH_DEEP_MODEL` | the three model options |
 | `CRUSH_REASONING_EFFORT` | `crush_reasoning_effort` |
 | `CRUSH_DISCOVER_MODELS` | `crush_discover_models` (`false` turns it off) |
-| `CRUSH_CONFIG_URL` | `crush_config_url` |
+| `CRUSH_OSC52_AUTOCOPY` | `osc52_autocopy` (`true` copies silently) |
+| `CRUSH_CONFIG_URL`, `CRUSH_CONFIG_SHA256`, `CRUSH_CONFIG_ALLOW_HTTP` | `crush_config_url`, `crush_config_sha256`, `crush_config_allow_http` |
 | `MCP_SERVERS` | `mcp_servers` |
 
 The **env file** is `/config/crushdata/env`, one `NAME=value` per line. It is read at every start.
 
 - Only the names in the table above are read, plus `CRUSH_UPDATE_VERSION` and `CRUSH_UPDATE_SHA256` (they come under `CRUSH_*`), `MCP_TOKEN_*`, `THIRD_PARTY_*` and any other `CRUSH_*`. Other names (for example `PATH` or `LD_PRELOAD`) are skipped and logged by name.
 - A value may use letters, digits and `_ . / : @ + % = , ~ ? -`. Wrap a value with spaces in double quotes. For JSON such as `MCP_SERVERS`, wrap it in single quotes and leave out any `'` inside it.
-- Anything else is skipped and logged without showing the value. Nothing from this file is run as a command.
+- Anything else is skipped and logged without showing the value. A line whose name is not a documented name is reported by length only, so a pasted key cannot leak even if it is all uppercase; documented names (for example `PATH` or `LD_PRELOAD`) are still named. Nothing from this file is run as a command.
 
 ## Home Assistant access
 
@@ -249,7 +250,7 @@ If `/homeassistant/.crushdata/` exists and `/config/crushdata/` does not have th
 
 - The terminal is a live root shell inside the add-on. It is reachable only through Home Assistant's ingress, so your HA login is the lock. It listens on loopback behind a small gate that accepts only the ingress proxy.
 - **Crush holds a manager-level Home Assistant token and any MCP tokens in its environment.** Anything Crush runs can read them. Treat prompts, web pages and files you give it as able to ask for them.
-- The add-on can read and write your whole HA config folder, and read `/ssl` and `/backup`. That includes secrets and backups.
+- The add-on can read and write your whole HA config folder, `/share` and `/media`, and read `/ssl` and `/backup`. That includes secrets and backups.
 - The central config and Crush updates are used only when they match a hash you set yourself.
 - The Crush config, `env` and `tmux.conf` run as root here. They live in the add-on's private `/config` folder, which other add-ons cannot write.
 - Keys are saved under `/config/crushdata/`, so they are in HA backups. Protect backups and rotate a key if one leaks.
@@ -288,6 +289,7 @@ The copy helpers load even when `touch_bar` is off. Silent copying needs the pag
 | `ha` fails | The token or API is not reachable. | Run `curl -s $HA_URL/api/ -H "Authorization: Bearer $HA_TOKEN"`. |
 | Supervisor `401` or `403` | Some refusals are expected (see the table above). | If the start-up check says `token DENIED` or `SUPERVISOR_TOKEN missing`, update or reinstall the add-on. |
 | Cannot copy text | The mouse belongs to Crush. | Hold Shift (Option on a Mac) while dragging. See [Copy and paste](#copy-and-paste). |
+| `Clipboard initialization failed` in Crush's own log | Crush has no X server in the add-on. | Expected. The web terminal handles copy and paste itself; see [Copy and paste](#copy-and-paste). |
 | Slow answers | The add-on does not run models. | Check your Ollama host or provider. |
 
 ## Changelog

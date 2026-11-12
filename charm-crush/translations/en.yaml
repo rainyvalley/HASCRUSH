@@ -4,7 +4,8 @@ configuration:
   provider:
     name: LLM Provider
     description: >-
-      ollama (default): models served by ollama.com and/or your LAN Ollama.
+      ollama (default): models served by ollama.com, plus your LAN Ollama
+      when set.
       third_party: any OpenAI-compatible API - then set its Base URL and API
       Key below; the default models are remapped onto your provider.
   third_party_base_url:
@@ -20,9 +21,8 @@ configuration:
     name: LAN Ollama URL
     description: >-
       Base URL of your local Ollama (OpenAI-compatible /v1). Adds the
-      ollama-local provider when provider = ollama; its models reach the
-      in-terminal picker through discovery. Leave empty to keep the add-on
-      cloud-only.
+      ollama-local provider; its models reach the in-terminal picker through
+      discovery. Leave empty to keep the add-on cloud-only.
   crush_large_model:
     name: Default (Daily) Model
     description: >-
@@ -119,9 +119,9 @@ configuration:
       when one resolves, the entry runs as a sh wrapper that sends the token
       as the FIRST stdin line and then execs the command (the relay tool must
       be in the add-on image; socat already is). Every token belongs on its
-      own entry. Leave empty (or omit your memory entry) to disable the
-      memory MCP; empty list = template servers as-is. Entries replace only
-      their own server's line. Changes apply on add-on restart.
+      own entry. An empty list leaves a central template's servers exactly as
+      they are; each entry replaces only its own server's line. Changes apply
+      on add-on restart.
   ollama_api_key:
     name: Ollama API Key
     description: >-

@@ -49,6 +49,21 @@ justapastedsecretkey1234567890"
   [[ "$BAD" == *"no \"=\""* ]]
 }
 
+@test "env file: a mistyped key containing '=' is masked, not printed as a name" {
+  # A bare key with base64 padding (or a token plus trailing text) parses as
+  # "name=value"; the report must not echo that name text either.
+  envclean "sk-ant-api03-ABCDEF1234567890==
+ghp_abcdefghijklmnop=tail
+ABCDEF1234567890==
+PATH=/x"
+  [ ! -s "$TMP/kept" ]
+  [[ "$BAD" != *ABCDEF* ]]
+  [[ "$BAD" != *ghp_* ]]
+  [[ "$BAD" == *"<name masked"* ]]
+  # a documented name is still reported, by name
+  [[ "$BAD" == *"PATH=<masked>"* ]]
+}
+
 @test "env file: code in a single-quoted-looking or unquoted value stays rejected" {
   envclean "CRUSH_A='x'\$(id)
 CRUSH_B=a;id
