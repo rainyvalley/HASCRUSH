@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.108] - 2026-11-16
+
+### Build
+
+- Automatic version bump for build `bbfe41c`.
+- crush 0.100.0 -> 0.101.0;ha CLI 5.6.0 -> 6.0.0
+
 ## [1.0.107] - 2026-11-12
 
 ### Security

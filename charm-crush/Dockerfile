@@ -100,7 +100,7 @@ RUN set -eux; \
 # Asset naming: crush_<ver>_Linux_<arch>.tar.gz with the binary at
 # crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine packages
 # (arch names x86_64/aarch64) — an alternative install path.
-ARG CRUSH_VERSION=0.100.0
+ARG CRUSH_VERSION=0.101.0
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
         amd64) CRUSH_ARCH="x86_64" ;; \
@@ -129,9 +129,9 @@ RUN set -eux; \
 # records for each release asset (releases API "digest" field); upstream ships
 # no checksum file of its own. Refreshed weekly by
 # .github/workflows/update-pins.yml (version and BOTH hashes move together).
-ARG HA_CLI_VERSION=5.6.0
-ARG HA_CLI_SHA256_AMD64=9d259c700bfcd45b6a793709e1fcfd304a595624dda10cfa5edde66f0b8a9656
-ARG HA_CLI_SHA256_AARCH64=4ecdbd67002defbf96e4668e62f631e9767b92d18e1ce54bfee6ddd040c20e73
+ARG HA_CLI_VERSION=6.0.0
+ARG HA_CLI_SHA256_AMD64=faab39046723cb68d43e9d5c8ac5a2cf105f3ecb3f5c8a01c0999c2699c56489
+ARG HA_CLI_SHA256_AARCH64=514cd052627358d673842e6132d4d0fc88f246c1af767a895c2b529a153c0c59
 RUN case "${BUILD_ARCH}" in \
         amd64) HA_SHA256="${HA_CLI_SHA256_AMD64}" ;; \
         aarch64) HA_SHA256="${HA_CLI_SHA256_AARCH64}" ;; \
