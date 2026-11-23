@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.109] - 2026-11-23
+
+### Build
+
+- Automatic version bump for build `d94d245`.
+- crush 0.101.0 -> 0.102.0
+
 ## [1.0.108] - 2026-11-16
 
 ### Build

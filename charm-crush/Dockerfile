@@ -100,7 +100,7 @@ RUN set -eux; \
 # Asset naming: crush_<ver>_Linux_<arch>.tar.gz with the binary at
 # crush_<ver>_Linux_<arch>/crush inside. The .apk files are alpine packages
 # (arch names x86_64/aarch64) — an alternative install path.
-ARG CRUSH_VERSION=0.101.0
+ARG CRUSH_VERSION=0.102.0
 RUN set -eux; \
     case "${BUILD_ARCH}" in \
         amd64) CRUSH_ARCH="x86_64" ;; \
